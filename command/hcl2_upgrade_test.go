@@ -10,35 +10,57 @@ import (
 )
 
 func Test_hcl2_upgrade(t *testing.T) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd: %v", err)
-	}
-	_ = cwd
 
 	tc := []struct {
-		folder string
+		folder    string
+		flags     []string
+		exitCode  int
+		exitEarly bool
 	}{
-		{"hcl2_upgrade_basic"},
+		{folder: "unknown_builder", flags: []string{}, exitCode: 1},
+		{folder: "complete", flags: []string{"-with-annotations"}},
+		{folder: "without-annotations", flags: []string{}},
+		{folder: "minimal", flags: []string{"-with-annotations"}},
+		{folder: "source-name", flags: []string{"-with-annotations"}},
+		{folder: "error-cleanup-provisioner", flags: []string{"-with-annotations"}},
+		{folder: "aws-access-config", flags: []string{}},
+		{folder: "variables-only", flags: []string{}},
+		{folder: "variables-with-variables", flags: []string{}},
+		{folder: "complete-variables-with-template-engine", flags: []string{}},
+		{folder: "escaping", flags: []string{}},
+		{folder: "vsphere_linux_options_and_network_interface", exitCode: 1, flags: []string{}},
+		{folder: "nonexistent", flags: []string{}, exitCode: 1, exitEarly: true},
 	}
 
 	for _, tc := range tc {
 		t.Run(tc.folder, func(t *testing.T) {
-			inputPath := filepath.Join(testFixture(tc.folder, "input.json"))
+			inputPath := filepath.Join(testFixture("hcl2_upgrade", tc.folder, "input.json"))
 			outputPath := inputPath + ".pkr.hcl"
-			expectedPath := filepath.Join(testFixture(tc.folder, "expected.pkr.hcl"))
-			p := helperCommand(t, "hcl2_upgrade", inputPath)
-			bs, err := p.CombinedOutput()
-			if err != nil {
-				t.Fatalf("%v %s", err, bs)
+			expectedPath := filepath.Join(testFixture("hcl2_upgrade", tc.folder, "expected.pkr.hcl"))
+			args := []string{"hcl2_upgrade"}
+			if len(tc.flags) > 0 {
+				args = append(args, tc.flags...)
 			}
-			expected := mustBytes(ioutil.ReadFile(expectedPath))
-			actual := mustBytes(ioutil.ReadFile(outputPath))
+			args = append(args, inputPath)
+			p := helperCommand(t, args...)
+			err := p.Run()
+			defer os.Remove(outputPath)
+			if err != nil {
+				t.Logf("run returned an error: %s", err)
+			}
+			actualExitCode := p.ProcessState.ExitCode()
+			if tc.exitCode != actualExitCode {
+				t.Fatalf("unexpected exit code: %d found; expected %d ", actualExitCode, tc.exitCode)
+			}
+			if tc.exitEarly {
+				return
+			}
+			expected := string(mustBytes(ioutil.ReadFile(expectedPath)))
+			actual := string(mustBytes(ioutil.ReadFile(outputPath)))
 
 			if diff := cmp.Diff(expected, actual); diff != "" {
 				t.Fatalf("unexpected output: %s", diff)
 			}
-			os.Remove(outputPath)
 		})
 	}
 }

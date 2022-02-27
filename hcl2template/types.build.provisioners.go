@@ -2,12 +2,13 @@ package hcl2template
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	hcl2shim "github.com/hashicorp/packer/hcl2template/shim"
-	"github.com/hashicorp/packer/packer"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -73,7 +74,7 @@ func (p *ProvisionerBlock) String() string {
 	return fmt.Sprintf(buildProvisionerLabel+"-block %q %q", p.PType, p.PName)
 }
 
-func (p *Parser) decodeProvisioner(block *hcl.Block, cfg *PackerConfig) (*ProvisionerBlock, hcl.Diagnostics) {
+func (p *Parser) decodeProvisioner(block *hcl.Block, ectx *hcl.EvalContext) (*ProvisionerBlock, hcl.Diagnostics) {
 	var b struct {
 		Name        string    `hcl:"name,optional"`
 		PauseBefore string    `hcl:"pause_before,optional"`
@@ -84,7 +85,7 @@ func (p *Parser) decodeProvisioner(block *hcl.Block, cfg *PackerConfig) (*Provis
 		Override    cty.Value `hcl:"override,optional"`
 		Rest        hcl.Body  `hcl:",remain"`
 	}
-	diags := gohcl.DecodeBody(block.Body, cfg.EvalContext(nil), &b)
+	diags := gohcl.DecodeBody(block.Body, ectx, &b)
 	if diags.HasErrors() {
 		return nil, diags
 	}
@@ -118,8 +119,10 @@ func (p *Parser) decodeProvisioner(block *hcl.Block, cfg *PackerConfig) (*Provis
 		pauseBefore, err := time.ParseDuration(b.PauseBefore)
 		if err != nil {
 			return nil, append(diags, &hcl.Diagnostic{
-				Summary: "Failed to parse pause_before duration",
-				Detail:  err.Error(),
+				Summary:  "Failed to parse pause_before duration",
+				Severity: hcl.DiagError,
+				Detail:   err.Error(),
+				Subject:  &block.DefRange,
 			})
 		}
 		provisioner.PauseBefore = pauseBefore
@@ -129,43 +132,43 @@ func (p *Parser) decodeProvisioner(block *hcl.Block, cfg *PackerConfig) (*Provis
 		timeout, err := time.ParseDuration(b.Timeout)
 		if err != nil {
 			return nil, append(diags, &hcl.Diagnostic{
-				Summary: "Failed to parse timeout duration",
-				Detail:  err.Error(),
+				Summary:  "Failed to parse timeout duration",
+				Severity: hcl.DiagError,
+				Detail:   err.Error(),
+				Subject:  &block.DefRange,
 			})
 		}
 		provisioner.Timeout = timeout
 	}
 
-	if !p.ProvisionersSchemas.Has(provisioner.PType) {
-		diags = append(diags, &hcl.Diagnostic{
-			Summary:  fmt.Sprintf("Unknown "+buildProvisionerLabel+" type %q", provisioner.PType),
-			Subject:  block.LabelRanges[0].Ptr(),
-			Detail:   fmt.Sprintf("known "+buildProvisionerLabel+"s: %v", p.ProvisionersSchemas.List()),
-			Severity: hcl.DiagError,
-		})
-		return nil, diags
-	}
 	return provisioner, diags
 }
 
-func (cfg *PackerConfig) startProvisioner(source SourceBlock, pb *ProvisionerBlock, ectx *hcl.EvalContext) (packer.Provisioner, hcl.Diagnostics) {
+func (cfg *PackerConfig) startProvisioner(source SourceUseBlock, pb *ProvisionerBlock, ectx *hcl.EvalContext) (packersdk.Provisioner, hcl.Diagnostics) {
 	var diags hcl.Diagnostics
 
-	provisioner, err := cfg.provisionersSchemas.Start(pb.PType)
+	provisioner, err := cfg.parser.PluginConfig.Provisioners.Start(pb.PType)
 	if err != nil {
 		diags = append(diags, &hcl.Diagnostic{
-			Summary: fmt.Sprintf("failed loading %s", pb.PType),
-			Subject: pb.HCL2Ref.LabelsRanges[0].Ptr(),
-			Detail:  err.Error(),
+			Severity: hcl.DiagError,
+			Summary:  fmt.Sprintf("failed loading %s", pb.PType),
+			Subject:  pb.HCL2Ref.LabelsRanges[0].Ptr(),
+			Detail:   err.Error(),
 		})
 		return nil, diags
 	}
+
+	builderVars := source.builderVariables()
+	builderVars["packer_core_version"] = cfg.CorePackerVersionString
+	builderVars["packer_debug"] = strconv.FormatBool(cfg.debug)
+	builderVars["packer_force"] = strconv.FormatBool(cfg.force)
+	builderVars["packer_on_error"] = cfg.onError
 
 	hclProvisioner := &HCL2Provisioner{
 		Provisioner:      provisioner,
 		provisionerBlock: pb,
 		evalContext:      ectx,
-		builderVariables: source.builderVariables(),
+		builderVariables: builderVars,
 	}
 
 	if pb.Override != nil {

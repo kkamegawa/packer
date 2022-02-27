@@ -1,4 +1,4 @@
-//go:generate mapstructure-to-hcl2 -type Config
+//go:generate packer-sdc mapstructure-to-hcl2 -type Config
 
 package breakpoint
 
@@ -9,10 +9,10 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/hashicorp/hcl/v2/hcldec"
-	"github.com/hashicorp/packer/common"
-	"github.com/hashicorp/packer/helper/config"
-	"github.com/hashicorp/packer/packer"
-	"github.com/hashicorp/packer/template/interpolate"
+	"github.com/hashicorp/packer-plugin-sdk/common"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	"github.com/hashicorp/packer-plugin-sdk/template/config"
+	"github.com/hashicorp/packer-plugin-sdk/template/interpolate"
 )
 
 type Config struct {
@@ -46,7 +46,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	return nil
 }
 
-func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.Communicator, _ map[string]interface{}) error {
+func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packersdk.Communicator, _ map[string]interface{}) error {
 	if p.config.Disable {
 		if p.config.Note != "" {
 			ui.Say(fmt.Sprintf(

@@ -1,6 +1,11 @@
 package packer
 
-import "github.com/hashicorp/hcl/v2"
+import (
+	"github.com/hashicorp/hcl/v2"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	packerregistry "github.com/hashicorp/packer/internal/registry"
+	plugingetter "github.com/hashicorp/packer/packer/plugin-getter"
+)
 
 type GetBuildsOptions struct {
 	// Get builds except the ones that match with except and with only the ones
@@ -8,13 +13,16 @@ type GetBuildsOptions struct {
 	Except, Only []string
 	Debug, Force bool
 	OnError      string
+
+	// count only/except match count; so say something when nothing matched.
+	ExceptMatches, OnlyMatches int
 }
 
 type BuildGetter interface {
 	// GetBuilds return all possible builds for a config. It also starts all
 	// builders.
 	// TODO(azr): rename to builder starter ?
-	GetBuilds(GetBuildsOptions) ([]Build, hcl.Diagnostics)
+	GetBuilds(GetBuildsOptions) ([]packersdk.Build, hcl.Diagnostics)
 }
 
 type Evaluator interface {
@@ -24,13 +32,33 @@ type Evaluator interface {
 	EvaluateExpression(expr string) (output string, exit bool, diags hcl.Diagnostics)
 }
 
-// The packer.Handler handles all Packer things.
+type InitializeOptions struct {
+	// When set, the execution of datasources will be skipped and the datasource will provide
+	// an output spec that will be used for validation only.
+	SkipDatasourcesExecution bool
+}
+
+// The Handler handles all Packer things. This interface reflects the Packer
+// commands, ex: init, console ( evaluate ), fix config, inspect config, etc. To
+// run a build we will start the builds and then the core of Packer handles
+// execution.
 type Handler interface {
-	Initialize() hcl.Diagnostics
+	Initialize(InitializeOptions) hcl.Diagnostics
+	// PluginRequirements returns the list of plugin Requirements from the
+	// config file.
+	PluginRequirements() (plugingetter.Requirements, hcl.Diagnostics)
 	Evaluator
 	BuildGetter
 	ConfigFixer
 	ConfigInspector
+	HCPHandler
+}
+
+// The HCPHandler handles Packer things needed for communicating with a HCP Packer Registry.
+type HCPHandler interface {
+	// ConfiguredArtifactMetadataPublisher returns a configured Bucket that can be used to publish
+	// build artifacts to the said image bucket.
+	ConfiguredArtifactMetadataPublisher() (*packerregistry.Bucket, hcl.Diagnostics)
 }
 
 //go:generate enumer -type FixConfigMode
@@ -56,7 +84,7 @@ type ConfigFixer interface {
 }
 
 type InspectConfigOptions struct {
-	Ui
+	packersdk.Ui
 }
 
 type ConfigInspector interface {

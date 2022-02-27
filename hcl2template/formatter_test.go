@@ -18,6 +18,7 @@ func TestHCL2Formatter_Format(t *testing.T) {
 		FormatExpected bool
 	}{
 		{Name: "Unformatted file", Path: "testdata/format/unformatted.pkr.hcl", FormatExpected: true},
+		{Name: "Unformatted vars file", Path: "testdata/format/unformatted.pkrvars.hcl", FormatExpected: true},
 		{Name: "Formatted file", Path: "testdata/format/formatted.pkr.hcl"},
 		{Name: "Directory", Path: "testdata/format", FormatExpected: true},
 	}
@@ -31,11 +32,9 @@ func TestHCL2Formatter_Format(t *testing.T) {
 		if diags.HasErrors() {
 			t.Fatalf("the call to Format failed unexpectedly %s", diags.Error())
 		}
-
 		if buf.String() != "" && tc.FormatExpected == false {
 			t.Errorf("Format(%q) should contain the name of the formatted file(s), but got %q", tc.Path, buf.String())
 		}
-
 	}
 }
 

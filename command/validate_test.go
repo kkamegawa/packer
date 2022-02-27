@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	"github.com/hashicorp/packer/packer"
 )
 
 func TestValidateCommand(t *testing.T) {
@@ -20,18 +22,29 @@ func TestValidateCommand(t *testing.T) {
 		{path: filepath.Join(testFixture("validate"), "null_var.json"), exitCode: 1},
 		{path: filepath.Join(testFixture("validate"), "var_foo_with_no_default.pkr.hcl"), exitCode: 1},
 
+		{path: testFixture("hcl", "validation", "wrong_pause_before.pkr.hcl"), exitCode: 1},
+
 		// wrong version fails
 		{path: filepath.Join(testFixture("version_req", "base_failure")), exitCode: 1},
 		{path: filepath.Join(testFixture("version_req", "base_success")), exitCode: 0},
 
 		// wrong version field
 		{path: filepath.Join(testFixture("version_req", "wrong_field_name")), exitCode: 1},
+
+		// wrong packer block
+		{path: filepath.Join(testFixture("validate", "invalid_packer_block.pkr.hcl")), exitCode: 1},
+
+		// Should return multiple errors,
+		{path: filepath.Join(testFixture("validate", "circular_error.pkr.hcl")), exitCode: 1},
+
+		// datasource could be unknown at that moment
+		{path: filepath.Join(testFixture("hcl", "data-source-validation.pkr.hcl")), exitCode: 0},
 	}
 
 	for _, tc := range tt {
 		t.Run(tc.path, func(t *testing.T) {
 			c := &ValidateCommand{
-				Meta: testMetaFile(t),
+				Meta: TestMetaFile(t),
 			}
 			tc := tc
 			args := []string{tc.path}
@@ -39,6 +52,29 @@ func TestValidateCommand(t *testing.T) {
 				fatalCommand(t, c.Meta)
 			}
 		})
+	}
+}
+
+func TestValidateCommand_SkipDatasourceExecution(t *testing.T) {
+	datasourceMock := &packersdk.MockDatasource{}
+	meta := TestMetaFile(t)
+	meta.CoreConfig.Components.PluginConfig.DataSources = packer.MapOfDatasource{
+		"mock": func() (packersdk.Datasource, error) {
+			return datasourceMock, nil
+		},
+	}
+	c := &ValidateCommand{
+		Meta: meta,
+	}
+	args := []string{filepath.Join(testFixture("validate"), "datasource.pkr.hcl")}
+	if code := c.Run(args); code != 0 {
+		fatalCommand(t, c.Meta)
+	}
+	if datasourceMock.ExecuteCalled {
+		t.Fatalf("Datasource should not be executed on validation")
+	}
+	if !datasourceMock.OutputSpecCalled {
+		t.Fatalf("Datasource OutPutSpec should be called on validation")
 	}
 }
 
@@ -60,7 +96,7 @@ func TestValidateCommand_SyntaxOnly(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.path, func(t *testing.T) {
 			c := &ValidateCommand{
-				Meta: testMetaFile(t),
+				Meta: TestMetaFile(t),
 			}
 			c.CoreConfig.Version = "102.0.0"
 			tc := tc
@@ -74,7 +110,7 @@ func TestValidateCommand_SyntaxOnly(t *testing.T) {
 
 func TestValidateCommandOKVersion(t *testing.T) {
 	c := &ValidateCommand{
-		Meta: testMetaFile(t),
+		Meta: TestMetaFile(t),
 	}
 	args := []string{
 		filepath.Join(testFixture("validate"), "template.json"),
@@ -89,7 +125,7 @@ func TestValidateCommandOKVersion(t *testing.T) {
 
 func TestValidateCommandBadVersion(t *testing.T) {
 	c := &ValidateCommand{
-		Meta: testMetaFile(t),
+		Meta: TestMetaFile(t),
 	}
 	args := []string{
 		filepath.Join(testFixture("validate"), "template.json"),
@@ -154,7 +190,7 @@ func TestValidateCommandExcept(t *testing.T) {
 	}
 
 	c := &ValidateCommand{
-		Meta: testMetaFile(t),
+		Meta: TestMetaFile(t),
 	}
 	c.CoreConfig.Version = "102.0.0"
 

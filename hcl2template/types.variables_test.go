@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/hashicorp/hcl/v2"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	"github.com/hashicorp/packer/builder/null"
 	. "github.com/hashicorp/packer/hcl2template/internal"
 	"github.com/hashicorp/packer/packer"
@@ -22,7 +23,8 @@ func TestParse_variables(t *testing.T) {
 			defaultParser,
 			parseTestArgs{"testdata/variables/basic.pkr.hcl", nil, nil},
 			&PackerConfig{
-				Basedir: filepath.Join("testdata", "variables"),
+				CorePackerVersionString: lockedVersion,
+				Basedir:                 filepath.Join("testdata", "variables"),
 				InputVariables: Variables{
 					"image_name": &Variable{
 						Name:   "image_name",
@@ -88,17 +90,27 @@ func TestParse_variables(t *testing.T) {
 						}},
 						Type: cty.String,
 					},
+					"supersecret": &Variable{
+						Name: "supersecret",
+						Values: []VariableAssignment{{
+							From:  "default",
+							Value: cty.StringVal("secretvar"),
+						}},
+						Type:      cty.String,
+						Sensitive: true,
+					},
 				},
 			},
 			false, false,
-			[]packer.Build{},
+			[]packersdk.Build{},
 			false,
 		},
 		{"duplicate variable",
 			defaultParser,
 			parseTestArgs{"testdata/variables/duplicate_variable.pkr.hcl", nil, nil},
 			&PackerConfig{
-				Basedir: filepath.Join("testdata", "variables"),
+				CorePackerVersionString: lockedVersion,
+				Basedir:                 filepath.Join("testdata", "variables"),
 				InputVariables: Variables{
 					"boolean_value": &Variable{
 						Name: "boolean_value",
@@ -111,14 +123,15 @@ func TestParse_variables(t *testing.T) {
 				},
 			},
 			true, true,
-			[]packer.Build{},
+			[]packersdk.Build{},
 			false,
 		},
 		{"duplicate variable in variables",
 			defaultParser,
 			parseTestArgs{"testdata/variables/duplicate_variables.pkr.hcl", nil, nil},
 			&PackerConfig{
-				Basedir: filepath.Join("testdata", "variables"),
+				CorePackerVersionString: lockedVersion,
+				Basedir:                 filepath.Join("testdata", "variables"),
 				InputVariables: Variables{
 					"boolean_value": &Variable{
 						Name: "boolean_value",
@@ -131,14 +144,38 @@ func TestParse_variables(t *testing.T) {
 				},
 			},
 			true, true,
-			[]packer.Build{},
+			[]packersdk.Build{},
+			false,
+		},
+		{"duplicate local block",
+			defaultParser,
+			parseTestArgs{"testdata/variables/duplicate_locals", nil, nil},
+			&PackerConfig{
+				CorePackerVersionString: lockedVersion,
+				Basedir:                 "testdata/variables/duplicate_locals",
+				LocalVariables: Variables{
+					"sensible": &Variable{
+						Values: []VariableAssignment{
+							{
+								From:  "default",
+								Value: cty.StringVal("something"),
+							},
+						},
+						Type: cty.String,
+						Name: "sensible",
+					},
+				},
+			},
+			true, true,
+			[]packersdk.Build{},
 			false,
 		},
 		{"invalid default type",
 			defaultParser,
 			parseTestArgs{"testdata/variables/invalid_default.pkr.hcl", nil, nil},
 			&PackerConfig{
-				Basedir: filepath.Join("testdata", "variables"),
+				CorePackerVersionString: lockedVersion,
+				Basedir:                 filepath.Join("testdata", "variables"),
 				InputVariables: Variables{
 					"broken_type": &Variable{
 						Name: "broken_type",
@@ -151,7 +188,7 @@ func TestParse_variables(t *testing.T) {
 				},
 			},
 			true, true,
-			[]packer.Build{},
+			[]packersdk.Build{},
 			false,
 		},
 
@@ -159,7 +196,8 @@ func TestParse_variables(t *testing.T) {
 			defaultParser,
 			parseTestArgs{"testdata/variables/unknown_key.pkr.hcl", nil, nil},
 			&PackerConfig{
-				Basedir: filepath.Join("testdata", "variables"),
+				CorePackerVersionString: lockedVersion,
+				Basedir:                 filepath.Join("testdata", "variables"),
 				InputVariables: Variables{
 					"broken_variable": &Variable{
 						Name:   "broken_variable",
@@ -169,7 +207,7 @@ func TestParse_variables(t *testing.T) {
 				},
 			},
 			true, true,
-			[]packer.Build{},
+			[]packersdk.Build{},
 			false,
 		},
 
@@ -177,7 +215,8 @@ func TestParse_variables(t *testing.T) {
 			defaultParser,
 			parseTestArgs{"testdata/variables/unset_used_string_variable.pkr.hcl", nil, nil},
 			&PackerConfig{
-				Basedir: filepath.Join("testdata", "variables"),
+				CorePackerVersionString: lockedVersion,
+				Basedir:                 filepath.Join("testdata", "variables"),
 				InputVariables: Variables{
 					"foo": &Variable{
 						Name: "foo",
@@ -186,7 +225,7 @@ func TestParse_variables(t *testing.T) {
 				},
 			},
 			true, true,
-			[]packer.Build{},
+			[]packersdk.Build{},
 			true,
 		},
 
@@ -194,7 +233,8 @@ func TestParse_variables(t *testing.T) {
 			defaultParser,
 			parseTestArgs{"testdata/variables/unset_unused_string_variable.pkr.hcl", nil, nil},
 			&PackerConfig{
-				Basedir: filepath.Join("testdata", "variables"),
+				CorePackerVersionString: lockedVersion,
+				Basedir:                 filepath.Join("testdata", "variables"),
 				InputVariables: Variables{
 					"foo": &Variable{
 						Name: "foo",
@@ -209,14 +249,16 @@ func TestParse_variables(t *testing.T) {
 				},
 				Builds: Builds{
 					&BuildBlock{
-						Sources: []SourceRef{
-							{Type: "null", Name: "null-builder"},
+						Sources: []SourceUseBlock{
+							{
+								SourceRef: SourceRef{Type: "null", Name: "null-builder"},
+							},
 						},
 					},
 				},
 			},
 			true, true,
-			[]packer.Build{
+			[]packersdk.Build{
 				&packer.CoreBuild{
 					Type:           "null",
 					Builder:        &null.Builder{},
@@ -232,7 +274,8 @@ func TestParse_variables(t *testing.T) {
 			defaultParser,
 			parseTestArgs{"testdata/variables/complicated", nil, nil},
 			&PackerConfig{
-				Basedir: "testdata/variables/complicated",
+				CorePackerVersionString: lockedVersion,
+				Basedir:                 "testdata/variables/complicated",
 				InputVariables: Variables{
 					"name_prefix": &Variable{
 						Name:   "name_prefix",
@@ -280,18 +323,19 @@ func TestParse_variables(t *testing.T) {
 				},
 			},
 			false, false,
-			[]packer.Build{},
+			[]packersdk.Build{},
 			false,
 		},
 		{"recursive locals",
 			defaultParser,
 			parseTestArgs{"testdata/variables/recursive_locals.pkr.hcl", nil, nil},
 			&PackerConfig{
-				Basedir:        filepath.Join("testdata", "variables"),
-				LocalVariables: Variables{},
+				CorePackerVersionString: lockedVersion,
+				Basedir:                 filepath.Join("testdata", "variables"),
+				LocalVariables:          Variables{},
 			},
 			true, true,
-			[]packer.Build{},
+			[]packersdk.Build{},
 			false,
 		},
 
@@ -299,7 +343,8 @@ func TestParse_variables(t *testing.T) {
 			defaultParser,
 			parseTestArgs{"testdata/variables/foo-string.variable.pkr.hcl", nil, []string{"testdata/variables/set-foo-too-wee.hcl"}},
 			&PackerConfig{
-				Basedir: filepath.Join("testdata", "variables"),
+				CorePackerVersionString: lockedVersion,
+				Basedir:                 filepath.Join("testdata", "variables"),
 				InputVariables: Variables{
 					"foo": &Variable{
 						Name: "foo",
@@ -312,7 +357,7 @@ func TestParse_variables(t *testing.T) {
 				},
 			},
 			false, false,
-			[]packer.Build{},
+			[]packersdk.Build{},
 			false,
 		},
 
@@ -320,10 +365,11 @@ func TestParse_variables(t *testing.T) {
 			defaultParser,
 			parseTestArgs{"testdata/variables/empty.pkr.hcl", nil, []string{"testdata/variables/set-foo-too-wee.hcl"}},
 			&PackerConfig{
-				Basedir: filepath.Join("testdata", "variables"),
+				CorePackerVersionString: lockedVersion,
+				Basedir:                 filepath.Join("testdata", "variables"),
 			},
 			true, false,
-			[]packer.Build{},
+			[]packersdk.Build{},
 			false,
 		},
 
@@ -331,7 +377,8 @@ func TestParse_variables(t *testing.T) {
 			defaultParser,
 			parseTestArgs{"testdata/variables/provisioner_variable_decoding.pkr.hcl", nil, nil},
 			&PackerConfig{
-				Basedir: filepath.Join("testdata", "variables"),
+				CorePackerVersionString: lockedVersion,
+				Basedir:                 filepath.Join("testdata", "variables"),
 				InputVariables: Variables{
 					"max_retries": &Variable{
 						Name:   "max_retries",
@@ -352,8 +399,10 @@ func TestParse_variables(t *testing.T) {
 				},
 				Builds: Builds{
 					&BuildBlock{
-						Sources: []SourceRef{
-							{Type: "null", Name: "null-builder"},
+						Sources: []SourceUseBlock{
+							{
+								SourceRef: SourceRef{Type: "null", Name: "null-builder"},
+							},
 						},
 						ProvisionerBlocks: []*ProvisionerBlock{
 							{
@@ -369,7 +418,7 @@ func TestParse_variables(t *testing.T) {
 				},
 			},
 			false, false,
-			[]packer.Build{&packer.CoreBuild{
+			[]packersdk.Build{&packer.CoreBuild{
 				Type:     "null.null-builder",
 				Prepared: true,
 				Builder:  &null.Builder{},
@@ -417,7 +466,8 @@ func TestParse_variables(t *testing.T) {
 			defaultParser,
 			parseTestArgs{"testdata/variables/validation/valid.pkr.hcl", nil, nil},
 			&PackerConfig{
-				Basedir: filepath.Join("testdata", "variables", "validation"),
+				CorePackerVersionString: lockedVersion,
+				Basedir:                 filepath.Join("testdata", "variables", "validation"),
 				InputVariables: Variables{
 					"image_id": &Variable{
 						Values: []VariableAssignment{
@@ -434,7 +484,7 @@ func TestParse_variables(t *testing.T) {
 				},
 			},
 			false, false,
-			[]packer.Build{},
+			[]packersdk.Build{},
 			false,
 		},
 
@@ -442,7 +492,8 @@ func TestParse_variables(t *testing.T) {
 			defaultParser,
 			parseTestArgs{"testdata/variables/validation/invalid_default.pkr.hcl", nil, nil},
 			&PackerConfig{
-				Basedir: filepath.Join("testdata", "variables", "validation"),
+				CorePackerVersionString: lockedVersion,
+				Basedir:                 filepath.Join("testdata", "variables", "validation"),
 				InputVariables: Variables{
 					"image_id": &Variable{
 						Values: []VariableAssignment{{"default", cty.StringVal("potato"), nil}},
@@ -795,7 +846,7 @@ func TestVariables_collectVariableValues(t *testing.T) {
 			var files []*hcl.File
 			parser := getBasicParser()
 			for i, hclContent := range tt.args.hclFiles {
-				file, diags := parser.ParseHCL([]byte(hclContent), fmt.Sprintf("test_file_%d_*"+hcl2VarFileExt, i))
+				file, diags := parser.ParseHCL([]byte(hclContent), fmt.Sprintf("test_file_%d_*"+hcl2AutoVarFileExt, i))
 				if diags != nil {
 					t.Fatalf("ParseHCLFile %d: %v", i, diags)
 				}
@@ -817,7 +868,7 @@ func TestVariables_collectVariableValues(t *testing.T) {
 			}
 			values := map[string]cty.Value{}
 			for k, v := range tt.variables {
-				value, diag := v.Value()
+				value, diag := v.Value(), v.ValidateValue()
 				if diag != nil {
 					t.Fatalf("Value %s: %v", k, diag)
 				}

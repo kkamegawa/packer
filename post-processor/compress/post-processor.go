@@ -1,4 +1,4 @@
-//go:generate mapstructure-to-hcl2 -type Config
+//go:generate packer-sdc mapstructure-to-hcl2 -type Config
 
 package compress
 
@@ -14,11 +14,12 @@ import (
 	"runtime"
 
 	"github.com/biogo/hts/bgzf"
+	"github.com/dsnet/compress/bzip2"
 	"github.com/hashicorp/hcl/v2/hcldec"
-	"github.com/hashicorp/packer/common"
-	"github.com/hashicorp/packer/helper/config"
-	"github.com/hashicorp/packer/packer"
-	"github.com/hashicorp/packer/template/interpolate"
+	"github.com/hashicorp/packer-plugin-sdk/common"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	"github.com/hashicorp/packer-plugin-sdk/template/config"
+	"github.com/hashicorp/packer-plugin-sdk/template/interpolate"
 	"github.com/klauspost/pgzip"
 	"github.com/pierrec/lz4"
 	"github.com/ulikunitz/xz"
@@ -70,7 +71,7 @@ func (p *PostProcessor) Configure(raws ...interface{}) error {
 		return err
 	}
 
-	errs := new(packer.MultiError)
+	errs := new(packersdk.MultiError)
 
 	// If there is no explicit number of Go threads to use, then set it
 	if os.Getenv("GOMAXPROCS") == "" {
@@ -92,7 +93,7 @@ func (p *PostProcessor) Configure(raws ...interface{}) error {
 	}
 
 	if err = interpolate.Validate(p.config.OutputPath, &p.config.ctx); err != nil {
-		errs = packer.MultiErrorAppend(
+		errs = packersdk.MultiErrorAppend(
 			errs, fmt.Errorf("Error parsing target template: %s", err))
 	}
 
@@ -107,9 +108,9 @@ func (p *PostProcessor) Configure(raws ...interface{}) error {
 
 func (p *PostProcessor) PostProcess(
 	ctx context.Context,
-	ui packer.Ui,
-	artifact packer.Artifact,
-) (packer.Artifact, bool, bool, error) {
+	ui packersdk.Ui,
+	artifact packersdk.Artifact,
+) (packersdk.Artifact, bool, bool, error) {
 	var generatedData map[interface{}]interface{}
 	stateData := artifact.State("generated_data")
 	if stateData != nil {
@@ -156,6 +157,14 @@ func (p *PostProcessor) PostProcess(
 		ui.Say(fmt.Sprintf("Using bgzf compression with %d cores for %s",
 			runtime.GOMAXPROCS(-1), target))
 		output, err = makeBGZFWriter(outputFile, p.config.CompressionLevel)
+		if err != nil {
+			return nil, false, false, fmt.Errorf(errTmpl, p.config.Algorithm, err)
+		}
+		defer output.Close()
+	case "bzip2":
+		ui.Say(fmt.Sprintf("Using bzip2 compression with 1 core for %s (library does not support MT)",
+			target))
+		output, err = makeBZIP2Writer(outputFile, p.config.CompressionLevel)
 		if err != nil {
 			return nil, false, false, fmt.Errorf(errTmpl, p.config.Algorithm, err)
 		}
@@ -242,12 +251,13 @@ func (config *Config) detectFromFilename() {
 	var result [][]string
 
 	extensions := map[string]string{
-		"tar":  "tar",
-		"zip":  "zip",
-		"gz":   "pgzip",
-		"lz4":  "lz4",
-		"bgzf": "bgzf",
-		"xz":   "xz",
+		"tar":   "tar",
+		"zip":   "zip",
+		"gz":    "pgzip",
+		"lz4":   "lz4",
+		"bgzf":  "bgzf",
+		"xz":    "xz",
+		"bzip2": "bzip2",
 	}
 
 	if config.Format == "" {
@@ -302,6 +312,20 @@ func makeBGZFWriter(output io.WriteCloser, compressionLevel int) (io.WriteCloser
 		return nil, ErrInvalidCompressionLevel
 	}
 	return bgzfWriter, nil
+}
+
+func makeBZIP2Writer(output io.Writer, compressionLevel int) (io.WriteCloser, error) {
+	// Set the default to highest level compression
+	bzipCFG := &bzip2.WriterConfig{Level: 9}
+	// Override our set defaults
+	if compressionLevel > 0 {
+		bzipCFG.Level = compressionLevel
+	}
+	bzipWriter, err := bzip2.NewWriter(output, bzipCFG)
+	if err != nil {
+		return nil, err
+	}
+	return bzipWriter, nil
 }
 
 func makeLZ4Writer(output io.WriteCloser, compressionLevel int) (io.WriteCloser, error) {

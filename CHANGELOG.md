@@ -1,30 +1,660 @@
-## 1.6.6 (Upcoming)
+## 1.8.0 (Upcoming)
+
+### FEATURES
+* **New Command** `packer plugins` command and subcommands to manage installed
+    plugins. [GH-11553](https://github.com/hashicorp/packer/pull/11553)
+
+### IMPROVEMENTS
+* Add the `env` argument to provisioner blocks that allow for setting a map of
+    key/value pairs to inject prior to the execute_command. The `env` argument
+    has support for reading from datasources, were `environment_vars` does not.
+    [GH-11569](https://github.com/hashicorp/packer/pull/11569)
+* Bump version of go-getter to allow for downloading ISOs with PGP signed
+    checksums. [GH-11495](https://github.com/hashicorp/packer/pull/11495)
+
+
+### BUG FIXES
+* core/hcl2: Fix issue preventing builds from pausing between provisioners when
+    the `--debug` argument has been passed.
+    [GH-11537](https://github.com/hashicorp/packer/pull/11537)
+* core/hcl2: Fixes a data loss issue when merging an empty-object map to a non-
+    empty map variable.
+    [GH-11566](https://github.com/hashicorp/packer/pull/11566)
+* core/hcl2: Fixes a regression where references to locals via the lookup
+    function were failing to find defined keys.
+    [GH-11566](https://github.com/hashicorp/packer/pull/11566)
+* core/hcl2: Fixes an issue where HCP Packer build labels from the first
+    completed build image were being copied to all images within the same
+    build. [GH-11574](https://github.com/hashicorp/packer/pull/11574)
+    [GH-11584](https://github.com/hashicorp/packer/pull/11584)
+
+## 1.7.10 (February 02, 2022)
+
+### NOTES:
+
+This patch release fixes a crash in m1 caused by the psutils dep,
+    https://github.com/hashicorp/packer/pull/11546, originally reported by the
+    HomeBrew team here https://github.com/hashicorp/packer/issues/11512
+
+### IMPROVEMENTS
+* Print all locals errors when there is a circular error.
+    [GH-11527](https://github.com/hashicorp/packer/pull/11527
+
+### BUG FIXES
+* Prevent duplicate local block creation.
+    [GH-11534](https://github.com/hashicorp/packer/pull/11534)
+* Update psutils dep to avoid crash on Arm64 Macs.
+    [GH-11546](https://github.com/hashicorp/packer/pull/11546)
+
+## 1.7.9 (January 19, 2022)
+### NOTES:
+
+* HCP Packer compatible plugins will contain a "HCP Packer Ready" badge at the
+    top of on their documentation page.
+    [GH-11456](https://github.com/hashicorp/packer/pull/11456)
+* Packer core [documentation](https://packer.io/docs) now supports versioning
+    on Packer.io. Users can select documentation for the version of Packer they
+    are using. [GH-11434](https://github.com/hashicorp/packer/pull/11434)
+* The `hcp_packer_registry.labels` argument has been deprecated in favor of the
+    new `bucket_labels` argument to support custom user generated bucket
+    labels. [GH-11401](https://github.com/hashicorp/packer/pull/11401)
+* The code of the Outscale builder was handed over to the outscale org
+    [GH-11428](https://github.com/hashicorp/packer/pull/11428)
+* Version information for external plugins has been added as a badge to the
+    plugin documentation.
+    [GH-11457](https://github.com/hashicorp/packer/pull/11457)
+* The following unmaintained external provisioner plugins have been archived: chef,
+    converge, inspec, salt-masterless, puppet. More
+    information on what this deprecation means for users can be found on the
+    blog post - [Plans to Archive Unmaintained Provisioner
+    Plugins](https://www.hashicorp.com/blog/plans-to-archive-unmaintained-packer-provisioner-plugins)
+
+
+### PLUGINS:
+
+External plugins have been pinned to the following versions. Please see
+    their respective changelogs for details on plugin specific bug fixes and
+    improvements.
+
+* alicloud@v1.0.1 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-alicloud/releases/tag/v1.0.1)
+* amazon@v1.0.6 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-amazon/releases/tag/v1.0.6)
+* ansible@v1.0.1 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-ansible/releases/tag/v1.0.1)
+* azure@v1.0.4 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-azure/releases/tag/v1.0.4)
+* chef@v1.0.2 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-chef/releases/tag/v1.0.2)
+* cloudstack@v1.0.0 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-cloudstack/releases/tag/v1.0.0)
+* converge@v1.0.1 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-converge/releases/tag/v1.0.1)
+* digitalocean@v1.0.1 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-digitalocean/releases/tag/v1.0.1)
+* docker@v1.0.3 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-docker/releases/tag/v1.0.3)
+* googlecompute@v1.0.9 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-googlecompute/releases/tag/v1.0.9)
+* hcloud@v1.0.2 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-hcloud/releases/tag/v1.0.2)
+* hyperone@v1.0.0 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-hyperone/releases/tag/v1.0.0)
+* hyperv@v1.0.1 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-hyperv/releases/tag/v1.0.1)
+* inspec@v1.0.0 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-inspec/releases/tag/v1.0.0)
+* jdcloud@v1.0.0 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-jdcloud/releases/tag/v1.0.0)
+* linode@v1.0.1 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-linode/releases/tag/v1.0.1)
+* lxc@v1.0.0 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-lxc/releases/tag/v1.0.0)
+* lxd@v1.0.0 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-lxd/releases/tag/v1.0.0)
+* ncloud@v1.0.1 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-ncloud/releases/tag/v1.0.1)
+* oneandone@v1.0.0 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-oneandone/releases/tag/v1.0.0)
+* openstack@v1.0.0 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-openstack/releases/tag/v1.0.0)
+* oracle@v1.0.1 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-oracle/releases/tag/v1.0.1)
+* outscale@v1.0.2 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-outscale/releases/tag/v1.0.2)
+* parallels@v1.0.0 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-parallels/releases/tag/v1.0.0)
+* profitbricks@v1.0.1 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-profitbricks/releases/tag/v1.0.1)
+* proxmox@v1.0.4 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-proxmox/releases/tag/v1.0.4)
+* puppet@v1.0.1 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-puppet/releases/tag/v1.0.1)
+* qemu@v1.0.1 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-qemu/releases/tag/v1.0.1)
+* salt@v1.0.0 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-salt/releases/tag/v1.0.0)
+* tencentcloud@v1.0.3 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-tencentcloud/releases/tag/v1.0.3)
+* triton@v1.0.0 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-triton/releases/tag/v1.0.0)
+* ucloud@v1.0.0 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-ucloud/releases/tag/v1.0.0)
+* vagrant@v1.0.1 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-vagrant/releases/tag/v1.0.1)
+* virtualbox@v1.0.1 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-virtualbox/releases/tag/v1.0.1)
+* vmware@v1.0.5 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-vmware/releases/tag/v1.0.5)
+* vsphere@v1.0.2 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-vsphere/releases/tag/v1.0.2)
+* yandex@v1.0.3 - [CHANGELOG](https://github.com/hashicorp/packer-plugin-yandex/releases/tag/v1.0.3)
+* scaleway@v1.0.4 - [CHANGELOG](https://github.com/scaleway/packer-plugin-scaleway/releases/tag/v1.0.4)
+
+### IMPROVEMENTS:
+
+* core/hcl2: Add `bucket_labels` argument to the `hcp_packer_registry` block to
+    support custom user generated bucket labels.
+    [GH-11401](https://github.com/hashicorp/packer/pull/11401)
+* core/hcl2: Add `build_labels` argument to the `hcp_packer_registry` block to
+    support custom user generated build labels.
+    [GH-11401](https://github.com/hashicorp/packer/pull/11401)
+* core/hcl2: Allow for the use of variables and locals within a `build` block.
+    [GH-11421](https://github.com/hashicorp/packer/pull/11421)
+* core/hcl2: Allow for the use of variables and locals within a
+    `hcp_packer_registry` block.
+    [GH-11421](https://github.com/hashicorp/packer/pull/11421)
+* core/website: Add HCP Packer Ready badge to supported plugins.
+    [GH-11456](https://github.com/hashicorp/packer/pull/11456)
+* core/website: Add Packer version selection toggle to Packer core
+    documentation. [GH-11434](https://github.com/hashicorp/packer/pull/11434)
+* core/website: Add version information to external plugin documentation.
+    [GH-11456](https://github.com/hashicorp/packer/pull/11456)
+* core/website: Extract external plugins documentation from `packer.io/docs/`
+    into `packer.io/plugins`.
+    [GH-11464](https://github.com/hashicorp/packer/pull/11464)
+* core: Add Packer user agent information to HCP Packer client requests.
+    [GH-11455](https://github.com/hashicorp/packer/pull/11455)
+* core: Bump github.com/hashicorp/packer-plugin-sdk from 0.2.9 to 0.2.11 to
+    prevent HCP Packer builds from failing when no SourceImageID is
+    provided.[GH-11459](https://github.com/hashicorp/packer/pull/11459)
+* core: Bump to latest preview version of hashicorp/hcp-sdk-go to prevent HCP
+    Packer builds from trying to update a revoked iteration.
+    [GH-11492](https://github.com/hashicorp/packer/pull/11492)
+* provisioner/powwershell: Tiny tweaks and fixes for the PowerShell
+    provisioner. [GH-11410](https://github.com/hashicorp/packer/pull/11410)
+
+### BUG FIXES:
+
+* core/hcl2: Allow the use of `build.name` for naming provisioners and
+    post-processors. [GH-11432](https://github.com/hashicorp/packer/pull/11432)
+* core/hcl2: Fix crash when a provisioner `timeout` argument is improperly
+    formatted. [GH-11382](https://github.com/hashicorp/packer/pull/11382)
+* core/hcl2: HCP Packer builds containing metadata not expected by Packer core
+    will no longer fail the build.
+    [GH-11458](https://github.com/hashicorp/packer/pull/11458)
+* provisioner/file: File provisioner will now perform a noop when no source
+    file content is specified; previously missing content resulted in a hard
+    fail. [GH-11349](https://github.com/hashicorp/packer/pull/11349)
+
+
+## 1.7.8 (October 27, 2021)
+
+### BUG FIXES
+* builder/amazon: Bump plugin to latest version to address a variable
+    interpolation issue for builder `run_tags`. [GH-11360](https://github.com/hashicorp/packer/pull/11360)
+
+## 1.7.7 (October 19, 2021)
+
+### NOTES:
+
+* The code of the Scaleway builder was handed over to the scaleway org
+    [GH-11298](https://github.com/hashicorp/packer/pull/11298)
+    [GH-11296](https://github.com/hashicorp/packer/pull/11296)
+
+### IMPROVEMENTS:
+* Improved support and user experience for HCP Packer registry.
+    [GH-11304](https://github.com/hashicorp/packer/pull/11304)
+    [GH-11315](https://github.com/hashicorp/packer/pull/11315)
+    [GH-11320](https://github.com/hashicorp/packer/pull/11320)
+    [GH-11319](https://github.com/hashicorp/packer/pull/11319)
+
+* core: Allow to use build variables in a post processor.
+    [GH-11323](https://github.com/hashicorp/packer/pull/11323)
+* core: Allow use in top level source variables in a build.source block.
+    [GH-11318](https://github.com/hashicorp/packer/pull/11318)
+* core: Show successful message upon successful packer validate.
+    [GH-11337](https://github.com/hashicorp/packer/pull/11337)
+* packer init: better error handling.
+    [GH-11330](https://github.com/hashicorp/packer/pull/11330)
+
+## 1.7.6 (September 28, 2021)
+
+### BUG FIXES:
+* core: Update Go module dependencies to fix an issue preventing Go 1.16 users
+    from installing the packer-plugins-check command via go install. [GH-11282]
+
+## 1.7.5 (September 14, 2021)
+
+### NOTES:
+The Exoscale builder and post-processor are no longer vendored with Packer
+    core, users of the Exoscale plugin should use `packer init` to install the
+    latest version of the plugin. See the [Exoscale Plugin
+    Documentation](https://github.com/exoscale/packer-plugin-exoscale#exoscale-packer-plugin) for more information. [GH-11237]
 
 ### FEATURES:
+* **Future Scaffolding** This release contains no-op refactors in preparation
+    for connecting Packer to the HCP Packer Registry.
+
+### IMPROVEMENTS:
+* core: Upgrade to Go 1.17. [GH-11237]
+* hcl2_upgrade: support strftime function. [GH-11220]
+* provisioner/file: add option to set content + tests. [GH-11209]
+* provisioner/inspec: Remove inspec provisioner from Packer core. [GH-11230]
+* provisioner/salt-masterless: Remove salt-masterless provisioner from Packer
+    core to github.com/hashicorp/packer-plugin-salt/provisioner/salt-
+    masterless. [GH-11229]
+
+### BUG FIXES:
+* builder/azure: Bump plugin to latest version to address a vulnerable
+    dependency in azure-sdk-for-go. [GH-11162]
+* builder/googlecompute: Bump plugin to latest version to fix an issue when
+    building an instance via an IAP tunnel. [GH-11235]
+* builder/ncloud: Bump ncloud dependency to fix dependency that got deleted
+    from github [GH-11224]
+* core: Fix `{{packer_version}}` interpolation regression for HCL and JSON
+    templates. [GH-11200]
+* hcl2_upgrade: Fix panic when file does not exist. [GH-11206]
+* hcl2_upgrade: special case: vsphere fix. [GH-11216]
+
+## 1.7.4 (July 20, 2021)
+
+### BUG FIXES:
+
+* builder/outscale: Update Outscale multi-component plugin to fix `go build`
+    failures due to missing Go module dependencies. [GH-11147]
+
+## 1.7.3 (June 15, 2021)
+
+### IMPROVEMENTS:
+
+We've extracted a majority of HashiCorp-maintained and community plugins from the Packer Core repository. They now live in their own multi-component plugin repositories. This is not a breaking change as we are enabling backwards compatibility in this release by vendoring components back into Packer.
+However, we encourage users to begin using `packer init` to download and install plugins to get the latest updates to each plugin, and to prepare for Packer v2.0 when we will stop vendoring the above plugins into the main Packer binary.
+
+The following repositories have been created, and their components have been deleted from the "github.com/hashicorp/packer" repository.
+
+* "github.com/hashicorp/packer-plugin-alicloud" [GH-10932]
+* "github.com/hashicorp/packer-plugin-amazon" [GH-10800]
+* "github.com/hashicorp/packer-plugin-ansible" [GH-10912]
+* "github.com/hashicorp/packer-plugin-azure" [GH-10979]
+* "github.com/hashicorp/packer-plugin-chef" [GH-10921]
+* "github.com/hashicorp/packer-plugin-cloudstack" [GH-10934]
+* "github.com/hashicorp/packer-plugin-converge" [GH-10956]
+* "github.com/hashicorp/packer-plugin-digitalocean" [GH-10961]
+* "github.com/hashicorp/packer-plugin-docker" [GH-10695]
+* "github.com/hashicorp/packer-plugin-googlecompute" [GH-10890]
+* "github.com/hashicorp/packer-plugin-hcloud" [GH-10966]
+* "github.com/hashicorp/packer-plugin-hyperone" [GH-10949]
+* "github.com/hashicorp/packer-plugin-hyperv" [GH-10949]
+* "github.com/hashicorp/packer-plugin-inspec"
+* "github.com/hashicorp/packer-plugin-ionos-cloud"
+* "github.com/hashicorp/packer-plugin-jdcloud" [GH-10946]
+* "github.com/hashicorp/packer-plugin-linode" [GH-10947]
+* "github.com/hashicorp/packer-plugin-lxc" [GH-10965]
+* "github.com/hashicorp/packer-plugin-lxd" [GH-10965]
+* "github.com/hashicorp/packer-plugin-ncloud" [GH-10937]
+* "github.com/hashicorp/packer-plugin-openstack" [GH-10933]
+* "github.com/hashicorp/packer-plugin-oracle" [GH-10962]
+* "github.com/hashicorp/packer-plugin-outscale" [GH-10941]
+* "github.com/hashicorp/packer-plugin-parallels" [GH-10936]
+* "github.com/hashicorp/packer-plugin-profitbricks" [GH-11084]
+* "github.com/hashicorp/packer-plugin-proxmox" [GH-10930]
+* "github.com/hashicorp/packer-plugin-puppet" [GH-10943]
+* "github.com/hashicorp/packer-plugin-qemu" [GH-10929]
+* "github.com/hashicorp/packer-plugin-salt"
+* "github.com/hashicorp/packer-plugin-scaleway" [GH-10939]
+* "github.com/hashicorp/packer-plugin-tencentcloud" [GH-10967]
+* "github.com/hashicorp/packer-plugin-triton" [GH-10963]
+* "github.com/hashicorp/packer-plugin-ucloud" [GH-10953]
+* "github.com/hashicorp/packer-plugin-vagrant" [GH-10960]
+* "github.com/hashicorp/packer-plugin-virtualbox" [GH-10910]
+* "github.com/hashicorp/packer-plugin-vmware" [GH-10920]
+* "github.com/hashicorp/packer-plugin-vsphere" [GH-10896]
+* "github.com/hashicorp/packer-plugin-yandex" [GH-10970]
+
+The following components will not be removed from the main packer binary:
+
+* `null` builder
+* `file` builder
+* `breakpoint` provisioner
+
+* `file` provisioner
+* `powershell` provisioner
+* `shell` provisioner
+* `shell-local` provisioner
+* `sleep` provisioner
+* `windows-restart` provisioner
+* `windows-shell` provisioner
+
+* `artifice` post-processor
+* `checksum` post-processor
+* `compress` post-processor
+* `manifest` post-processor
+* `shell-local` post-processor
+
+### Bug Fixes:
+* builder/azure: Add `keep_os_disk` parameter to control OS disk deletion
+    [GH-10045]
+* builder/azure: Stop SIG timout from being overridden by PollingDuration
+    [GH-10816]
+* builder/azure: Support shared image gallery storage account type [GH-10863]
+* builder/proxmox: Proxmox builder use ipv4 address instead of always ipv6.
+    [GH-10858]
+* core/hcl2_upgrade: Allow hcl2_upgrade continue with unknown builders.
+    [GH-11049]
+* core/hcl2_upgrade: Improve regex to fix escaping on split function.
+    [GH-11083]
+* core/hcl: Fix Invalid provisioner pause_before panic [GH-10978]
+* core: HCL "index" function now actually returns the index of the element
+    [GH-11008]
+* core: Implemented DEFAULT_NAME handling for datasource plugins [GH-11026]
+
+### Enhancements:
+
+* builder/azure:  Added custom nicname and osdiskname [GH-10938]
+* builder/azure: Add support for shared image gallery storage account type
+    [GH-10863]
+* builder/digitalocean: support ecdsa, ed25519, dsa temporary key types.
+    [GH-10856]
+* builder/ncloud: Support ncloud vpc version [GH-10870]
+* core/fmt: When reading from stdin `packer fmt` will output the contents of
+    the formatted file even if the input was already formatted. [GH-11047]
+* core/hcl: HCL variables are now supported within the `name`, `only`,
+    `except`, and `keep_input_artifact` fields for post-processor blocks.
+    [GH-11094]
+* core/hcl: Running `packer build` with an `-only` or `-exclude` flag will now
+    inform the user if no match was found. [GH-11050]
+* post-processor/compress: Add bzip2 support to post-processor [GH-10867]
+* post-processor/googlecompute-import: Add Image Storage Locations field
+    [GH-10864]
+* Removed the golang "vendor" directory in favor of go modules. This should not
+    affect end users. [GH-10916]
+
+## 1.7.2 (April 05, 2021)
+
+### IMPROVEMENTS:
+
+* builder/alicloud: Add `ramrole` configuration to ECS instance. [GH-10845]
+
+### BUG FIXES:
+
+* builder/proxmox: Update Proxmox Go API to ensure only the first non-loopback
+    IPv4 address gets returned. [GH-10858]
+* builder/vsphere: Fix primary disk resize on clone. [GH-10848]
+* core: Fix bug where call to "packer version" sent output to stderr instead of
+    stdout. [GH-10850]
+
+## 1.7.1 (March 31, 2021)
+
+### NOTES:
+
+* builder/amazon: Has been vendored in this release and will no longer be
+    updated with Packer core. In Packer v1.8.0 the plugin will be removed
+    entirely. The `amazon` components will continue to work as expected until
+    then, but for the latest offerings of the Amazon plugin, users are
+    encourage to use the `packer init` command to install the latest release
+    version. For more details see [Installing Packer
+    Plugins](https://www.packer.io/docs/plugins#installing-plugins)
+* builder/docker: Has been vendored in this release and will no longer be
+    updated with Packer core. In Packer v1.8.0 the plugin will be removed
+    entirely. The `docker` builder will continue to work as expected until
+    then, but for the latest offerings of the Docker plugin, users are
+    encourage to use the `packer init` command to install the latest release
+    version. For more details see [Installing Packer
+    Plugins](https://www.packer.io/docs/plugins#installing-plugins)
+* darwin/arm64: Packer now includes the darwin/arm64 binary to its releases to
+    supports the new OSX M1. [GH-10804]
+* post-processor/docker-\*: Have been vendored in this release and will no
+    longer be updated with Packer core. In Packer v1.8.0 the plugin will be
+    removed entirely. The `docker` builder will continue to work as expected
+    until then, but for the latest offerings of the Docker plugin, users are
+    encourage to use the `packer init` command to install the latest release
+    version. For more details see [Installing Packer
+    Plugins](https://www.packer.io/docs/plugins#installing-plugins)
+* post-processor/exoscale-import: Has been vendored in this release and will no
+    longer be updated with Packer core. In Packer v1.8.0 the plugin will be
+    removed entirely. The `exoscale-import` post-processor will continue to
+    work as expected until then, but for the latest offerings of the Exoscale
+    plugin, users are encourage to use the `packer init` command to install the
+    latest release version. For more details see [Exoscale Plugin
+    Repostiroy](https://github.com/exoscale/packer-plugin-exoscale). [GH-10709]
+
+### IMPROVEMENTS
+* builder/amazon: allow creation of ebs snapshots without volumes. [GH-9591]
+* builder/amazon: Fix issue for multi-region AMI build that fail when
+    encrypting with KMS and sharing across accounts. [GH-10754]
+* builder/azure: Add client_cert_token_timeout option. [GH-10528]
+* builder/google: Make Windows password timeout configurable. [GH-10727]
+* builder/google: Update public GCP image project as gce-uefi-images are
+    deprecated. [GH-10724]
+* builder/oracle-oci: Update Oracle Go SDK to add support for OCI flexible
+    shapes.  [GH-10833]
+* builder/proxmox: Allow using API tokens for Proxmox authentication.
+    [GH-10797]
+* builder/qemu: Added firmware option. [GH-10683]
+* builder/scaleway: add support for timeout in shutdown step. [GH-10503]
+* builder/vagrant: Fix logging to be clearer when Vagrant builder overrides
+    values retrieved from vagrant's ssh_config call. [GH-10743]
+* builder/virtualbox:  Added ISO builder option to create additional disks.
+    [GH-10674]
+* builder/virtualbox: Add options for nested virtualisation and RTC time base.
+    [GH-10736]
+* builder/virtualbox: Add template options for chipset, firmware, nic, graphics
+    controller, and audio controller. [GH-10671]
+* builder/virtualbox: Support for "virtio" storage and ISO drive. [GH-10632]
+* builder/vmware: Added "attach_snapshot" parameter to vmware vmx builder.
+    [GH-10651]
+* command/fmt: Adding recursive flag to formatter to format subdirectories.
+    [GH-10457]
+* core/hcl2: Add legacy_isotime function. [GH-10780]
+* core/hcl2: Add support for generating `dynamic` blocks within a `build`
+    block. [GH-10825]
+* core/hcl2: Add templatefile function. [GH-10776]
+* core/hcl2_upgrade: hcl2_upgrade command can now upgrade json var-files.
+    [GH-10676]
+* core/init: Add implicit required_plugin blocks feature. [GH-10732]
+* core: Add http_content option to serve variables from HTTP at preseed.
+    [GH-10801]
+* core: Change template parsing error to include warning about file extensions.
+    [GH-10652]
+* core: Update to gopsutil v3.21.1 to allow builds to work for darwin arm64.
+    [GH-10697]
+* provisioner/inspec: Allow non-zero exit codes for inspec provisioner.
+    [GH-10723]
+
+### BUG FIXES
+* buider/azure: Update builder to ensure a proper clean up Azure temporary
+    managed Os disks. [GH-10713]
+* builder/amazon: Update amazon SDK to fix an SSO login issue. [GH-10668]
+* builder/azure: Don't overwrite subscription id if unset. [GH-10659]
+* builder/azure: Set default for the parameter client_cert_token_timeout
+    [GH-10783]
+* builder/google: Add new configuration field `windows_password_timeout` to
+    allow user to set configurable timeouts. [GH-10727]
+* builder/hyperv: Make Packer respect winrm_host flag in winrm connect func.
+    [GH-10748]
+* builder/openstack: Make Packer respect winrm_host flag in winrm connect func.
+    [GH-10748]
+* builder/oracle-oci: Update Oracle Go SDK to fix issue with reading key file.
+    [GH-10560] [GH-10774]
+* builder/outscale: Fix omi_description that was ignored in Osc builder
+    [GH-10792]
+* builder/parallels: Make Packer respect winrm_host flag in winrm connect func.
+    [GH-10748]
+* builder/proxmox: Fixes issue when using `additional_iso_files` in HCL enabled
+    templates. [GH-10772]
+* builder/qemu: Make Packer respect winrm_host flag in winrm connect func.
+    [GH-10748]
+* builder/virtualbox: Make Packer respect winrm_host flag in winrm connect
+    func. [GH-10748]
+* builder/vmware: Added a fallback file check when trying to determine the
+    network-mapping configuration. [GH-10543]
+* builder/vsphere: Fix invalid device configuration issue when creating a
+    vm with multiple disk on the same controller. [GH-10844]
+* builder/vsphere: Fix issue where boot command would fail the build do to a
+    key typing error. This change will now retry to type the key on error
+    before giving up. [GH-10541]
+* core/hcl2_upgrade: Check for nil config map when provisioner/post-processor
+    doesn't have config. [GH-10730]
+* core/hcl2_upgrade: Fix escaped quotes in template functions [GH-10794]
+* core/hcl2_upgrade: Make hcl2_upgrade command correctly translate
+    pause_before. [GH-10654]
+* core/hcl2_upgrade: Make json variables using template engines get stored as
+    locals so they can be properly interpolated. [GH-10685]
+* core/init: Fixes issue where `packer init` was failing to install valid
+    plugins containing a 'v' within its name. [GH-10760]
+* core: Packer will now show a proper error message when failing to load the
+    contents of PACKER_CONFIG. [GH-10766]
+* core: Pin Packer to Golang 1.16 to fix code generation issues. [GH-10702]
+* core: Templates previously could not interpolate the environment variable
+    PACKER_LOG_PATH. [GH-10660]
+* post-processor/vagrant-cloud: Override direct upload based on box size
+    [GH-10820]
+* provisioner/chef-solo: HCL2 templates can support the json_string option.
+    [GH-10655]
+* provisioner/inspec: Add new configuration field `valid_exit_codes` to allow
+    for non-zero exit codes. [GH-10723]
+* provisioner/salt-masterless: Update urls for the bootstrap scripts used by
+    salt-masterless provide. [GH-10755]
+
+## 1.7.0 (February 17, 2021)
+
+### FEATURES
+* **New Command** (HCL only) `packer init` command will download plugins defined
+    in a new `required_plugins` block [GH-10304] [GH-10633].
+* **New Plugin Type** Data sources can be implemented (blog post forthcoming).
+    [GH-10440]
+* **New Plugin** Aws Secrets Manager data source [GH-10505] [GH-10467]
+
+### BACKWARDS INCOMPATIBILITIES
+* core: The API that the Packer core uses to communicate with community plugins
+    has changed; maintainers of community plugins will need to upgrade their
+    plugins in order to make them compatible with v1.7.0. An upgrade guide will
+    be available on our guides page https://www.packer.io/guides.
+
+### IMPROVEMENTS
+* builder/amazon: Add `skip_create_ami` option for testing and situations where
+    artifact is not the ami. [GH-10531]
+* builder/amazon: Add IMDSv2 support for AWS EBS builder. [GH-10546]
+* builder/amazon: Add resource tags in the launch template used to request spot
+    instances. [GH-10456]
+* builder/openstack:  Add `skip_create_image` option for testing and situations
+    where artifact is not the image. [GH-10496]
+* builder/oracle-oci: Add retry strategies to oci calls [GH-10591]
+* core/fmt: The `packer fmt` can now read from stdin. [GH-10500]
+* core/hcl: Add regex and regexall hcl2 template functions. [GH-10601]
+* core/hcl: Templates now support "sensitive" locals. [GH-10509]
+* core/hcl: Templates now support error-cleanup-provisioner. [GH-10604]
+* hcl2_upgrade: Command now comes with a flag so you can control whether output
+    templates are annotated with helpful comments. [GH-10619]
+* hcl2_upgrade: Command now gracefully handles options with template engine
+    interpolations. [GH-10625]
+* hcl2_upgrade: Command will convert amazon filters to use the ami data source.
+    [GH-10491]
+
+### BUG FIXES
+* amazon/ebssurrogate: Apply snapshot tags at same time as when taking
+    snapshot. [GH-10150]
+* builder/amazon: Fix bug where validation fails if optional iops value is
+    unset. [GH-10518]
+* builder/amazon: Wrap API call to get filtered image in a retry. [GH-10610]
+* builder/bsusurrogate: override bsu when omi root device is set. [GH-10490]
+* builder/google: Fix bug where Packer would fail when run by users who do not
+    have permission to access the metadata, even though the metadata is not
+    necessary to the run. [GH-10458]
+* builder/profitbricks: Profitbricks builder could not connect using SSH
+    communicator. [GH-10549]
+* builder/proxmox: Ensure ISOs in additional_iso_files are mounted during VM
+    creation. [GH-10586]
+* builder/proxmox: Improve cloud init error logging for proxmox builder.
+    [GH-10499]
+* builder/qemu: Fix bug where vnc_min_port set to value greater then 5900 could
+    prevent Packer from connecting to QEMU. [GH-10450] [GH-10451]
+* builder/qemu: Fix regression with cd indexing when disk_interface is `ide`.
+    [GH-10519]
+* builder/vmware-esx: Skip credential validation, which requires ovftool to be
+    installed, if we are not exporting an image. [GH-10520]
+* builder/yandex: Fix cloud-init config for ubuntu 20.04. [GH-10522]
+* builder/yandex: Fix incorrect access to `instance_id`. [GH-10522]
+* core/hcl: Fix bug where []uint8 types could not be passed to plugins.
+* core/hcl: fix bug where HCL core could not handle passing []uint8 to plugins.
+    [GH-10516]
+* core/hcl: Fix force flag for hcl2 provisioners and post-processors.
+    [GH-10571]
+* post-processor/vsphere: Fix regression where Packer would not check the exit
+    status after streaming UI from the ovftool command. [GH-10468]
+* post-processor/yandex-export: Changed dhclient command and supported
+    configuring disk for exportupdate-dump-method. Also added support for
+    `file` builder. [GH-10488]
+
+## 1.6.6 (December 16, 2020)
+
+### FEATURES
 * **New command** `fmt` allows users to format existing HCL2 configuration
     files into a canonical style. Please see [fmt command
     docs](https://packer.io/docs/commands/fmt) for more details. [GH-10225]
+    [GH-10377]
 * **New function** `env` allows users to set the default value of a variable to
     the value of an environment variable. Please see [env function
-    docs](https://www.packer.io/docs/from-1.5/functions/contextual/env") for
+    docs](https://www.packer.io/docs/templates/hcl_templates/functions/contextual/env) for
     more details. [GH-10240]
-* builder/azure-arm: Create keyvaults with SoftDelete enabled [GH-10210]
-* builder/outscale: Add x509 certificate support [GH-10161]
-* post-processor/yandex-export: Verify the access to a specific bucket
-    [GH-10188]
+* **Future Scaffolding** This release contains a large number of no-op
+    refactoring changes. The Packer team at HashiCorp is preparing to split the
+    plugins and core to make it easier for our third party maintainers and
+    community members to release and maintain plugins, just like HashiCorp did
+    with the Terraform Core-Provider split. The Packer team is committed to
+    making sure that this split is seamless for our users and for our community
+    maintainers -- if you are a community maintainer, you may want to follow
+    along with some of the work by looking at the
+    [core-plugin-split github tag.](https://github.com/hashicorp/packer/pulls?q=is%3Apr+label%3Acore-plugin-split)
+    No one needs to do anything, yet, but we felt it was worth calling out all
+    the work that isn't making it into the changelog. We will be following up
+    with lots of documentation and communication in early 2021 with more
+    information.
 
 ### IMPROVEMENTS
 * builder/amazon-ebs: Add tags to launch templates. [GH-10203]
+* builder/amazon: Add support for Amazon EBS gp3 volumes. [Gh-10338]
+* builder/amazon: Increase default max_retries to lessen throttling issues.
+    [GH-10290]
+* builder/amazon: Support AWS gp3 volumes [GH-10338]
+* builder/amazon: Support root volume encryption for amazon-chroot. [GH-10243]
+* builder/amazon: Validate IOPS ratio. [GH-10199]
 * builder/azure-arm: Add Azure CLI authentication support to builder.
     [GH-10157]
-* core/hcl: Update to `hcl2_upgrade` command to support complex variable
-    values and packer version blocks. [GH-10221]
+* builder/azure-arm: Create keyvaults with SoftDelete enabled. [GH-10210]
+* builder/digitalocean: New option to provision with private ip. [GH-10093]
+* builder/google: Add `wait_to_add_ssh_keys` option to delay the addition of
+    SSH configuration that may be disrupted during an instance boot sequence.
+    [GH-10320]
+* builder/google: Add support for creating shielded VMs. [GH-10172]
+* builder/googlecompute-export: Add logging.write to service account scopes.
+    [GH-10316]
+* builder/oracle-oci: Support image launch mode. [GH-10212]
+* builder/outscale: Add outscale.hk endpoint support [GH-10207]
+* builder/outscale: Add x509 certificate support. [GH-10161]
+* builder/proxmox: New config option for boot-order. [GH-10260]
+* builder/scaleway: Use the SDK functions to load profile from file and env.
+    [GH-10181]
+* builder/virtualbox: Allow attaching guest additions with "none" communicator.
+    [GH-10306]
+* builder/vmware: Make compatible with MacOS BigSur by using Apple DHCP leases
+    instead of VMWare leases [GH-10384]
+* builder/vsphere: New option to add additional storage to a cloned vm.
+    [GH-10287]
+* builder/yandex: More resilient image mounting and initialization. [GH-10335]
+* builder/yandex: Update user-data to not use cloud-config fields to prevent
+    possible user data collisions. [GH-10385]
+* core/hcl: Update to `hcl2_upgrade` command to support complex variable values
+    and packer version blocks. [GH-10221]
+* hcl2upgrade: Update command to fix `env` call upgrade. [GH-10244]
 * post-processor/vagrant-cloud: Add support for uploading directly to storage
     on Vagrant Cloud. [GH-10193]
+* post-processor/yandex-export: Add retries and wait after disk attach
+    operation. [GH-10303]
+* post-processor/yandex-export: Show progress on export. [GH-10368]
+* post-processor/yandex-export: Use ssh communicator in export. [GH-10352]
+* post-processor/yandex-export: Verify the access to a specific bucket.
+    [GH-10188]
+* provisioner/salt-masterless: Call winrepo.update_git_repos and
+    pkg.refresh_db. [GH-10201]
 
 ### BUG FIXES
+* builder/amazon: Fix retry logic in AWS spot instance tagging. [GH-10394]
 * builder/amazon: Fix single `tag` interpolation to allow for templating engine
     usage. [GH-10224]
+* builder/google: Fix crash when using the `-on-error` build flag. [GH-10247]
+* builder/google: Fix issue with service account detection when running Packer
+    on a compute instance with `use_os_login` enabled. [GH-10360]
+* builder/qemu: Fix duplication of main disk when setting "disk_image: true".
+    [GH-10337]
+* builder/qemu: Fix nil pointer dereference when loading values from state.
+    [GH-10249]
+* builder/qemu: Fix panic when disk_image=true and source image has no file
+    extension. [GH-10226]
+* builder/vagrant: Return error if ssh-config command fails. [GH-10213]
+* builder/vsphere: WaitForIP should not return an error if an IP is not found
+    [GH-10321]
+* builder/yandex: Change disk creation method to manual. [GH-10250]
+* builder/yandex: Fix issue with UserAgent string. [GH-10361]
+* builder/yandex: Fixed using cloud config when using IPv6. [GH-10297]
+* core/hcl: Ensure the `reverse` function does not break when given a value of
+    type list. [GH-10380]
+* post-processor/yandex-export: Check service account id. [GH-10305]
 
 ## 1.6.5 (October 30, 2020)
 
@@ -4491,3 +5121,4 @@ making changes for HCL2.
 ## 0.1.0 (June 28, 2013)
 
 * Initial release
+

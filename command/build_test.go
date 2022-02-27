@@ -1,7 +1,6 @@
 package command
 
 import (
-	"bytes"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -12,14 +11,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/hashicorp/packer/builder/file"
-	"github.com/hashicorp/packer/builder/null"
-	"github.com/hashicorp/packer/packer"
-	"github.com/hashicorp/packer/post-processor/manifest"
-	shell_local_pp "github.com/hashicorp/packer/post-processor/shell-local"
-	filep "github.com/hashicorp/packer/provisioner/file"
-	"github.com/hashicorp/packer/provisioner/shell"
-	shell_local "github.com/hashicorp/packer/provisioner/shell-local"
+	"github.com/hashicorp/go-uuid"
 )
 
 var (
@@ -36,6 +28,8 @@ mascarpone
 whipped_egg_white
 dress
 `
+	one = "1\n"
+	two = "2\n"
 )
 
 func TestBuild(t *testing.T) {
@@ -73,7 +67,7 @@ func TestBuild(t *testing.T) {
 		},
 
 		{
-			name: "var-args: json - inexistent var file errs",
+			name: "var-args: json - nonexistent var file errs",
 			args: []string{
 				"-var-file=" + filepath.Join(testFixture("var-arg"), "potato.json"),
 				filepath.Join(testFixture("var-arg"), "fruit_builder.json"),
@@ -83,7 +77,7 @@ func TestBuild(t *testing.T) {
 		},
 
 		{
-			name: "var-args: hcl - inexistent json var file errs",
+			name: "var-args: hcl - nonexistent json var file errs",
 			args: []string{
 				"-var-file=" + filepath.Join(testFixture("var-arg"), "potato.json"),
 				testFixture("var-arg"),
@@ -93,7 +87,7 @@ func TestBuild(t *testing.T) {
 		},
 
 		{
-			name: "var-args: hcl - inexistent hcl var file errs",
+			name: "var-args: hcl - nonexistent hcl var file errs",
 			args: []string{
 				"-var-file=" + filepath.Join(testFixture("var-arg"), "potato.hcl"),
 				testFixture("var-arg"),
@@ -370,13 +364,128 @@ func TestBuild(t *testing.T) {
 			},
 			expectedCode: 1,
 		},
+		{
+			name: "hcl - execute and use datasource",
+			args: []string{
+				testFixture("hcl", "datasource.pkr.hcl"),
+			},
+			fileCheck: fileCheck{
+				expectedContent: map[string]string{
+					"chocolate.txt": "chocolate",
+				},
+			},
+		},
+		{
+			name: "hcl - dynamic source blocks in a build block",
+			args: []string{
+				testFixture("hcl", "dynamic", "build.pkr.hcl"),
+			},
+			fileCheck: fileCheck{
+				expectedContent: map[string]string{
+					"dummy.txt":       "layers/base/main/files",
+					"postgres/13.txt": "layers/base/main/files\nlayers/base/init/files\nlayers/postgres/files",
+				},
+				expected: []string{"dummy-fooo.txt", "dummy-baar.txt", "postgres/13-fooo.txt", "postgres/13-baar.txt"},
+			},
+		},
+
+		{
+			name: "hcl - variables can be used in shared post-processor fields",
+			args: []string{
+				testFixture("hcl", "var-in-pp-name.pkr.hcl"),
+			},
+			fileCheck: fileCheck{
+				expectedContent: map[string]string{
+					"example1.1.txt": one,
+					"example2.2.txt": two,
+				},
+				notExpected: []string{
+					"example1.2.txt",
+					"example2.1.txt",
+				},
+			},
+		},
+		{
+			name: "hcl - using build variables in post-processor",
+			args: []string{
+				testFixture("hcl", "build-var-in-pp.pkr.hcl"),
+			},
+			fileCheck: fileCheck{
+				expectedContent: map[string]string{
+					"example.2.txt": two,
+				},
+			},
+		},
+
+		{
+			name: "hcl - test crash #11381",
+			args: []string{
+				testFixture("hcl", "nil-component-crash.pkr.hcl"),
+			},
+			expectedCode: 1,
+		},
+		{
+			name: "hcl - using variables in build block",
+			args: []string{
+				testFixture("hcl", "vars-in-build-block.pkr.hcl"),
+			},
+			fileCheck: fileCheck{
+				expectedContent: map[string]string{
+					"example.2.txt": two,
+				},
+			},
+		},
+		{
+			name: "hcl - recursive local using input var",
+			args: []string{
+				testFixture("hcl", "recursive_local_with_input"),
+			},
+			fileCheck: fileCheck{
+				expectedContent: map[string]string{
+					"hey.txt": "hello",
+				},
+			},
+		},
+		{
+			name: "hcl - recursive local using an unset input var",
+			args: []string{
+				testFixture("hcl", "recursive_local_with_unset_input"),
+			},
+			fileCheck:    fileCheck{},
+			expectedCode: 1,
+		},
+		{
+			name: "hcl - var with default value empty object/list can be set",
+			args: []string{
+				testFixture("hcl", "empty_object"),
+			},
+			fileCheck: fileCheck{
+				expectedContent: map[string]string{
+					"foo.txt": "yo",
+				},
+			},
+		},
+		{
+			name: "hcl - unknown ",
+			args: []string{
+				testFixture("hcl", "data-source-validation.pkr.hcl"),
+			},
+			fileCheck: fileCheck{
+				expectedContent: map[string]string{
+					"foo.txt": "foo",
+				},
+				expected: []string{
+					"s3cr3t",
+				},
+			},
+		},
 	}
 
 	for _, tt := range tc {
 		t.Run(tt.name, func(t *testing.T) {
 			defer tt.cleanup(t)
 			run(t, tt.args, tt.expectedCode)
-			tt.fileCheck.verify(t)
+			tt.fileCheck.verify(t, "")
 		})
 	}
 }
@@ -439,7 +548,7 @@ func Test_build_output(t *testing.T) {
 
 func TestBuildOnlyFileCommaFlags(t *testing.T) {
 	c := &BuildCommand{
-		Meta: testMetaFile(t),
+		Meta: TestMetaFile(t),
 	}
 
 	args := []string{
@@ -472,7 +581,7 @@ func TestBuildOnlyFileCommaFlags(t *testing.T) {
 
 func TestBuildStdin(t *testing.T) {
 	c := &BuildCommand{
-		Meta: testMetaFile(t),
+		Meta: TestMetaFile(t),
 	}
 	f, err := os.Open(filepath.Join(testFixture("build-only"), "template.json"))
 	if err != nil {
@@ -499,7 +608,7 @@ func TestBuildStdin(t *testing.T) {
 
 func TestBuildOnlyFileMultipleFlags(t *testing.T) {
 	c := &BuildCommand{
-		Meta: testMetaFile(t),
+		Meta: TestMetaFile(t),
 	}
 
 	args := []string{
@@ -533,7 +642,7 @@ func TestBuildOnlyFileMultipleFlags(t *testing.T) {
 
 func TestBuildProvisionAndPosProcessWithBuildVariablesSharing(t *testing.T) {
 	c := &BuildCommand{
-		Meta: testMetaFile(t),
+		Meta: TestMetaFile(t),
 	}
 
 	args := []string{
@@ -560,7 +669,7 @@ func TestBuildProvisionAndPosProcessWithBuildVariablesSharing(t *testing.T) {
 
 func TestBuildEverything(t *testing.T) {
 	c := &BuildCommand{
-		Meta: testMetaFile(t),
+		Meta: TestMetaFile(t),
 	}
 
 	args := []string{
@@ -585,7 +694,7 @@ func TestBuildEverything(t *testing.T) {
 
 func TestBuildExceptFileCommaFlags(t *testing.T) {
 	c := &BuildCommand{
-		Meta: testMetaFile(t),
+		Meta: TestMetaFile(t),
 	}
 	tc := []struct {
 		name                     string
@@ -658,7 +767,7 @@ func TestBuildExceptFileCommaFlags(t *testing.T) {
 
 func testHCLOnlyExceptFlags(t *testing.T, args, present, notPresent []string) {
 	c := &BuildCommand{
-		Meta: testMetaFile(t),
+		Meta: TestMetaFile(t),
 	}
 
 	defer cleanup()
@@ -681,6 +790,79 @@ func testHCLOnlyExceptFlags(t *testing.T, args, present, notPresent []string) {
 			t.Errorf("Expected to find %s", f)
 		}
 	}
+}
+
+func TestHCL2PostProcessorForceFlag(t *testing.T) {
+	t.Helper()
+
+	UUID, _ := uuid.GenerateUUID()
+	// Manifest will only clean with force if the build's PACKER_RUN_UUID are different
+	os.Setenv("PACKER_RUN_UUID", UUID)
+	defer os.Unsetenv("PACKER_RUN_UUID")
+
+	args := []string{
+		filepath.Join(testFixture("hcl"), "force.pkr.hcl"),
+	}
+	fCheck := fileCheck{
+		expectedContent: map[string]string{
+			"manifest.json": fmt.Sprintf(`{
+  "builds": [
+    {
+      "name": "potato",
+      "builder_type": "null",
+      "files": null,
+      "artifact_id": "Null",
+      "packer_run_uuid": %q,
+      "custom_data": null
+    }
+  ],
+  "last_run_uuid": %q
+}`, UUID, UUID),
+		},
+	}
+	defer fCheck.cleanup(t)
+
+	c := &BuildCommand{
+		Meta: TestMetaFile(t),
+	}
+	if code := c.Run(args); code != 0 {
+		fatalCommand(t, c.Meta)
+	}
+	fCheck.verify(t, "")
+
+	// Second build should override previous manifest
+	UUID, _ = uuid.GenerateUUID()
+	os.Setenv("PACKER_RUN_UUID", UUID)
+
+	args = []string{
+		"-force",
+		filepath.Join(testFixture("hcl"), "force.pkr.hcl"),
+	}
+	fCheck = fileCheck{
+		expectedContent: map[string]string{
+			"manifest.json": fmt.Sprintf(`{
+  "builds": [
+    {
+      "name": "potato",
+      "builder_type": "null",
+      "files": null,
+      "artifact_id": "Null",
+      "packer_run_uuid": %q,
+      "custom_data": null
+    }
+  ],
+  "last_run_uuid": %q
+}`, UUID, UUID),
+		},
+	}
+
+	c = &BuildCommand{
+		Meta: TestMetaFile(t),
+	}
+	if code := c.Run(args); code != 0 {
+		fatalCommand(t, c.Meta)
+	}
+	fCheck.verify(t, "")
 }
 
 func TestBuildCommand_HCLOnlyExceptOptions(t *testing.T) {
@@ -745,7 +927,7 @@ func TestBuildCommand_HCLOnlyExceptOptions(t *testing.T) {
 
 func TestBuildWithNonExistingBuilder(t *testing.T) {
 	c := &BuildCommand{
-		Meta: testMetaFile(t),
+		Meta: TestMetaFile(t),
 	}
 
 	args := []string{
@@ -771,7 +953,7 @@ func run(t *testing.T, args []string, expectedCode int) {
 	t.Helper()
 
 	c := &BuildCommand{
-		Meta: testMetaFile(t),
+		Meta: TestMetaFile(t),
 	}
 
 	if code := c.Run(args); code != expectedCode {
@@ -801,68 +983,25 @@ func (fc fileCheck) expectedFiles() []string {
 	return expected
 }
 
-func (fc fileCheck) verify(t *testing.T) {
+func (fc fileCheck) verify(t *testing.T, dir string) {
 	for _, f := range fc.expectedFiles() {
-		if !fileExists(f) {
-			t.Errorf("Expected to find %s", f)
+		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
+			t.Errorf("Expected to find %s: %v", f, err)
 		}
 	}
 	for _, f := range fc.notExpected {
-		if fileExists(f) {
+		if _, err := os.Stat(filepath.Join(dir, f)); err == nil {
 			t.Errorf("Expected to not find %s", f)
 		}
 	}
 	for file, expectedContent := range fc.expectedContent {
-		content, err := ioutil.ReadFile(file)
+		content, err := ioutil.ReadFile(filepath.Join(dir, file))
 		if err != nil {
 			t.Fatalf("ioutil.ReadFile: %v", err)
 		}
 		if diff := cmp.Diff(expectedContent, string(content)); diff != "" {
 			t.Errorf("content of %s differs: %s", file, diff)
 		}
-	}
-}
-
-// fileExists returns true if the filename is found
-func fileExists(filename string) bool {
-	if _, err := os.Stat(filename); err == nil {
-		return true
-	}
-	return false
-}
-
-// testCoreConfigBuilder creates a packer CoreConfig that has a file builder
-// available. This allows us to test a builder that writes files to disk.
-func testCoreConfigBuilder(t *testing.T) *packer.CoreConfig {
-	components := packer.ComponentFinder{
-		BuilderStore: packer.MapOfBuilder{
-			"file": func() (packer.Builder, error) { return &file.Builder{}, nil },
-			"null": func() (packer.Builder, error) { return &null.Builder{}, nil },
-		},
-		ProvisionerStore: packer.MapOfProvisioner{
-			"shell-local": func() (packer.Provisioner, error) { return &shell_local.Provisioner{}, nil },
-			"shell":       func() (packer.Provisioner, error) { return &shell.Provisioner{}, nil },
-			"file":        func() (packer.Provisioner, error) { return &filep.Provisioner{}, nil },
-		},
-		PostProcessorStore: packer.MapOfPostProcessor{
-			"shell-local": func() (packer.PostProcessor, error) { return &shell_local_pp.PostProcessor{}, nil },
-			"manifest":    func() (packer.PostProcessor, error) { return &manifest.PostProcessor{}, nil },
-		},
-	}
-	return &packer.CoreConfig{
-		Components: components,
-	}
-}
-
-// testMetaFile creates a Meta object that includes a file builder
-func testMetaFile(t *testing.T) Meta {
-	var out, err bytes.Buffer
-	return Meta{
-		CoreConfig: testCoreConfigBuilder(t),
-		Ui: &packer.BasicUi{
-			Writer:      &out,
-			ErrorWriter: &err,
-		},
 	}
 }
 
@@ -888,7 +1027,7 @@ func cleanup(moreFiles ...string) {
 }
 
 func TestBuildCommand_ParseArgs(t *testing.T) {
-	defaultMeta := testMetaFile(t)
+	defaultMeta := TestMetaFile(t)
 	type fields struct {
 		Meta Meta
 	}

@@ -1,7 +1,6 @@
 // This is the main package for the `packer` application.
 
 //go:generate go run ./scripts/generate-plugins.go
-//go:generate go generate ./common/bootcommand/...
 package main
 
 import (
@@ -17,10 +16,12 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-uuid"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	"github.com/hashicorp/packer-plugin-sdk/pathing"
+	pluginsdk "github.com/hashicorp/packer-plugin-sdk/plugin"
+	"github.com/hashicorp/packer-plugin-sdk/tmp"
 	"github.com/hashicorp/packer/command"
 	"github.com/hashicorp/packer/packer"
-	"github.com/hashicorp/packer/packer/plugin"
-	"github.com/hashicorp/packer/packer/tmp"
 	"github.com/hashicorp/packer/version"
 	"github.com/mitchellh/cli"
 	"github.com/mitchellh/panicwrap"
@@ -64,7 +65,7 @@ func realMain() int {
 		logWriter = ioutil.Discard
 	}
 
-	packer.LogSecretFilter.SetOutput(logWriter)
+	packersdk.LogSecretFilter.SetOutput(logWriter)
 
 	// Disable logging here
 	log.SetOutput(ioutil.Discard)
@@ -78,10 +79,6 @@ func realMain() int {
 	}
 	defer os.Remove(logTempFile.Name())
 	defer logTempFile.Close()
-
-	// Tell the logger to log to this file
-	os.Setenv(EnvLog, "")
-	os.Setenv(EnvLogFile, "")
 
 	// Setup the prefixed readers that send data properly to
 	// stdout/stderr.
@@ -98,7 +95,7 @@ func realMain() int {
 
 	// Create the configuration for panicwrap and wrap our executable
 	wrapConfig.Handler = panicHandler(logTempFile)
-	wrapConfig.Writer = io.MultiWriter(logTempFile, &packer.LogSecretFilter)
+	wrapConfig.Writer = io.MultiWriter(logTempFile, &packersdk.LogSecretFilter)
 	wrapConfig.Stdout = outW
 	wrapConfig.DetectDuration = 500 * time.Millisecond
 	wrapConfig.ForwardSignals = []os.Signal{syscall.SIGTERM}
@@ -129,13 +126,22 @@ func realMain() int {
 // wrappedMain is called only when we're wrapped by panicwrap and
 // returns the exit status to exit with.
 func wrappedMain() int {
+	// WARNING: WrappedMain causes unexpected behaviors when writing to stderr
+	// and stdout.  Anything in this function written to stderr will be captured
+	// by the logger, but will not be written to the terminal. Anything in
+	// this function written to standard out must be prefixed with ErrorPrefix
+	// or OutputPrefix to be sent to the right terminal stream, but adding
+	// these prefixes can cause nondeterministic results for output from
+	// other, asynchronous methods. Try to avoid modifying output in this
+	// function if at all possible.
+
 	// If there is no explicit number of Go threads to use, then set it
 	if os.Getenv("GOMAXPROCS") == "" {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
 
-	packer.LogSecretFilter.SetOutput(os.Stderr)
-	log.SetOutput(&packer.LogSecretFilter)
+	packersdk.LogSecretFilter.SetOutput(os.Stderr)
+	log.SetOutput(&packersdk.LogSecretFilter)
 
 	inPlugin := inPlugin()
 	if inPlugin {
@@ -155,7 +161,11 @@ func wrappedMain() int {
 	// passed into commands like `packer build`
 	config, err := loadConfig()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading configuration: \n\n%s\n", err)
+		// Writing to Stdout here so that the error message bypasses panicwrap. By using the
+		// ErrorPrefix this output will be redirected to Stderr by the copyOutput func.
+		// TODO: nywilken need to revisit this setup to better output errors to Stderr, and output to Stdout
+		// without panicwrap
+		fmt.Fprintf(os.Stdout, "%s Error loading configuration: \n\n%s\n", ErrorPrefix, err)
 		return 1
 	}
 
@@ -167,20 +177,24 @@ func wrappedMain() int {
 		)
 	}
 
-	cacheDir, err := packer.CachePath()
+	cacheDir, err := packersdk.CachePath()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error preparing cache directory: \n\n%s\n", err)
+		// Writing to Stdout here so that the error message bypasses panicwrap. By using the
+		// ErrorPrefix this output will be redirected to Stderr by the copyOutput func.
+		// TODO: nywilken need to revisit this setup to better output errors to Stderr, and output to Stdout
+		// without panicwrap
+		fmt.Fprintf(os.Stdout, "%s Error preparing cache directory: \n\n%s\n", ErrorPrefix, err)
 		return 1
 	}
-	log.Printf("Setting cache directory: %s", cacheDir)
+	log.Printf("[INFO] Setting cache directory: %s", cacheDir)
 
 	// Determine if we're in machine-readable mode by mucking around with
 	// the arguments...
 	args, machineReadable := extractMachineReadable(os.Args[1:])
 
-	defer plugin.CleanupClients()
+	defer packer.CleanupClients()
 
-	var ui packer.Ui
+	var ui packersdk.Ui
 	if machineReadable {
 		// Setup the UI as we're being machine-readable
 		ui = &packer.MachineReadableUi{
@@ -190,28 +204,32 @@ func wrappedMain() int {
 		// Set this so that we don't get colored output in our machine-
 		// readable UI.
 		if err := os.Setenv("PACKER_NO_COLOR", "1"); err != nil {
-			fmt.Fprintf(os.Stderr, "Packer failed to initialize UI: %s\n", err)
+			// Outputting error using Ui here to conform to the machine readable format.
+			ui.Error(fmt.Sprintf("Packer failed to initialize UI: %s\n", err))
 			return 1
 		}
 	} else {
-		basicUi := &packer.BasicUi{
+		basicUi := &packersdk.BasicUi{
 			Reader:      os.Stdin,
 			Writer:      os.Stdout,
 			ErrorWriter: os.Stdout,
-			PB:          &packer.NoopProgressTracker{},
+			PB:          &packersdk.NoopProgressTracker{},
 		}
 		ui = basicUi
 		if !inPlugin {
 			currentPID := os.Getpid()
 			backgrounded, err := checkProcess(currentPID)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "cannot determine if process is in "+
-					"background: %s\n", err)
+				// Writing to Stderr will ensure that the output gets captured by panicwrap.
+				// This error message and any other message writing to Stderr after this point will only show up with PACKER_LOG=1
+				// TODO: nywilken need to revisit this setup to better output errors to Stderr, and output to Stdout without panicwrap.
+				fmt.Fprintf(os.Stderr, "%s cannot determine if process is in background: %s\n", ErrorPrefix, err)
 			}
+
 			if backgrounded {
-				fmt.Fprint(os.Stderr, "Running in background, not using a TTY\n")
+				fmt.Fprintf(os.Stderr, "%s Running in background, not using a TTY\n", ErrorPrefix)
 			} else if TTY, err := openTTY(); err != nil {
-				fmt.Fprintf(os.Stderr, "No tty available: %s\n", err)
+				fmt.Fprintf(os.Stderr, "%s No tty available: %s\n", ErrorPrefix, err)
 			} else {
 				basicUi.TTY = TTY
 				basicUi.PB = &packer.UiProgressBar{}
@@ -223,11 +241,8 @@ func wrappedMain() int {
 	CommandMeta = &command.Meta{
 		CoreConfig: &packer.CoreConfig{
 			Components: packer.ComponentFinder{
-				Hook: config.StarHook,
-
-				BuilderStore:       config.Builders,
-				ProvisionerStore:   config.Provisioners,
-				PostProcessorStore: config.PostProcessors,
+				Hook:         config.StarHook,
+				PluginConfig: config.Plugins,
 			},
 			Version: version.Version,
 		},
@@ -252,7 +267,11 @@ func wrappedMain() int {
 	}
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error executing CLI: %s\n", err)
+		// Writing to Stdout here so that the error message bypasses panicwrap. By using the
+		// ErrorPrefix this output will be redirected to Stderr by the copyOutput func.
+		// TODO: nywilken need to revisit this setup to better output errors to Stderr, and output to Stdout
+		// without panicwrap
+		fmt.Fprintf(os.Stdout, "%s Error executing CLI: %s\n", ErrorPrefix, err)
 		return 1
 	}
 
@@ -299,33 +318,101 @@ func extractMachineReadable(args []string) ([]string, bool) {
 
 func loadConfig() (*config, error) {
 	var config config
-	config.PluginMinPort = 10000
-	config.PluginMaxPort = 25000
-	config.Builders = packer.MapOfBuilder{}
-	config.PostProcessors = packer.MapOfPostProcessor{}
-	config.Provisioners = packer.MapOfProvisioner{}
-	if err := config.Discover(); err != nil {
+	config.Plugins = &packer.PluginConfig{
+		PluginMinPort:      10000,
+		PluginMaxPort:      25000,
+		KnownPluginFolders: packer.PluginFolders("."),
+
+		// BuilderRedirects
+		BuilderRedirects: map[string]string{
+
+			//"amazon-chroot":       "github.com/hashicorp/amazon",
+			//"amazon-ebs":          "github.com/hashicorp/amazon",
+			//"amazon-ebssurrogate": "github.com/hashicorp/amazon",
+			//"amazon-ebsvolume":    "github.com/hashicorp/amazon",
+			//"amazon-instance":     "github.com/hashicorp/amazon",
+
+			//"azure-arm":    "github.com/hashicorp/azure",
+			//"azure-chroot": "github.com/hashicorp/azure",
+			//"azure-dtl":    "github.com/hashicorp/azure",
+
+			//"docker": "github.com/hashicorp/docker",
+
+			//"exoscale": "github.com/exoscale/exoscale",
+
+			//"googlecompute": "github.com/hashicorp/googlecompute",
+
+			//"parallels-iso": "github.com/hashicorp/parallels",
+			//"parallels-pvm": "github.com/hashicorp/parallels",
+
+			//"qemu": "github.com/hashicorp/qemu",
+
+			//"vagrant": "github.com/hashicorp/vagrant",
+
+			//"virtualbox-iso": "github.com/hashicorp/virtualbox",
+			//"virtualbox-ovf": "github.com/hashicorp/virtualbox",
+			//"virtualbox-vm":  "github.com/hashicorp/virtualbox",
+
+			//"vmware-iso": "github.com/hashicorp/vmware",
+			//"vmware-vmx": "github.com/hashicorp/vmware",
+
+			//"vsphere-iso":   "github.com/hashicorp/vsphere",
+			//"vsphere-clone": "github.com/hashicorp/vsphere",
+		},
+		DatasourceRedirects: map[string]string{
+			//"amazon-ami":            "github.com/hashicorp/amazon",
+			//"amazon-secretsmanager": "github.com/hashicorp/amazon",
+		},
+		ProvisionerRedirects: map[string]string{
+			//"ansible":       "github.com/hashicorp/ansible",
+			//"ansible-local": "github.com/hashicorp/ansible",
+
+			//"azure-dtlartifact": "github.com/hashicorp/azure",
+		},
+		PostProcessorRedirects: map[string]string{
+			//"amazon-import": "github.com/hashicorp/amazon",
+
+			//"docker-import": "github.com/hashicorp/docker",
+			//"docker-push":   "github.com/hashicorp/docker",
+			//"docker-save":   "github.com/hashicorp/docker",
+			//"docker-tag":    "github.com/hashicorp/docker",
+
+			//"googlecompute-export": "github.com/hashicorp/googlecompute",
+			//"googlecompute-import": "github.com/hashicorp/googlecompute",
+
+			//"exoscale-import": "github.com/exoscale/exoscale",
+
+			//"vagrant":       "github.com/hashicorp/vagrant",
+			//"vagrant-cloud": "github.com/hashicorp/vagrant",
+
+			//"vsphere":          "github.com/hashicorp/vsphere",
+			//"vsphere-template": "github.com/hashicorp/vsphere",
+		},
+	}
+	if err := config.Plugins.Discover(); err != nil {
+		return nil, err
+	}
+
+	// Finally, try to use an internal plugin. Note that this will not override
+	// any previously-loaded plugins.
+	if err := config.discoverInternalComponents(); err != nil {
 		return nil, err
 	}
 
 	// start by loading from PACKER_CONFIG if available
-	log.Print("Checking 'PACKER_CONFIG' for a config file path")
 	configFilePath := os.Getenv("PACKER_CONFIG")
-
 	if configFilePath == "" {
 		var err error
-		log.Print("'PACKER_CONFIG' not set; checking the default config file path")
-		configFilePath, err = packer.ConfigFile()
+		log.Print("[INFO] PACKER_CONFIG env var not set; checking the default config file path")
+		configFilePath, err = pathing.ConfigFile()
 		if err != nil {
 			log.Printf("Error detecting default config file path: %s", err)
 		}
 	}
-
 	if configFilePath == "" {
 		return &config, nil
 	}
-
-	log.Printf("Attempting to open config file: %s", configFilePath)
+	log.Printf("[INFO] PACKER_CONFIG env var set; attempting to open config file: %s", configFilePath)
 	f, err := os.Open(configFilePath)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -390,7 +477,7 @@ func copyOutput(r io.Reader, doneCh chan<- struct{}) {
 }
 
 func inPlugin() bool {
-	return os.Getenv(plugin.MagicCookieKey) == plugin.MagicCookieValue
+	return os.Getenv(pluginsdk.MagicCookieKey) == pluginsdk.MagicCookieValue
 }
 
 func init() {

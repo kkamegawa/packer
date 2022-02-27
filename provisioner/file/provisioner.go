@@ -1,5 +1,5 @@
-//go:generate mapstructure-to-hcl2 -type Config
-//go:generate struct-markdown
+//go:generate packer-sdc mapstructure-to-hcl2 -type Config
+//go:generate packer-sdc struct-markdown
 
 package file
 
@@ -13,14 +13,22 @@ import (
 	"strings"
 
 	"github.com/hashicorp/hcl/v2/hcldec"
-	"github.com/hashicorp/packer/common"
-	"github.com/hashicorp/packer/helper/config"
-	"github.com/hashicorp/packer/packer"
-	"github.com/hashicorp/packer/template/interpolate"
+	"github.com/hashicorp/packer-plugin-sdk/common"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	"github.com/hashicorp/packer-plugin-sdk/template/config"
+	"github.com/hashicorp/packer-plugin-sdk/template/interpolate"
+	"github.com/hashicorp/packer-plugin-sdk/tmp"
 )
 
 type Config struct {
 	common.PackerConfig `mapstructure:",squash"`
+	// This is the content to copy to `destination`. If destination is a file,
+	// content will be written to that file, in case of a directory a file named
+	// `pkr-file-content` is created. It's recommended to use a file as the
+	// destination. A template_file might be referenced in here, or any
+	// interpolation syntax. This attribute cannot be specified with source or
+	// sources.
+	Content string `mapstructure:"content" required:"true"`
 	// The path to a local file or directory to upload to the
 	// machine. The path can be absolute or relative. If it is relative, it is
 	// relative to the working directory when Packer is executed. If this is a
@@ -83,10 +91,10 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.Direction = "upload"
 	}
 
-	var errs *packer.MultiError
+	var errs *packersdk.MultiError
 
 	if p.config.Direction != "download" && p.config.Direction != "upload" {
-		errs = packer.MultiErrorAppend(errs,
+		errs = packersdk.MultiErrorAppend(errs,
 			errors.New("Direction must be one of: download, upload."))
 	}
 	if p.config.Source != "" {
@@ -96,19 +104,19 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	if p.config.Direction == "upload" {
 		for _, src := range p.config.Sources {
 			if _, err := os.Stat(src); p.config.Generated == false && err != nil {
-				errs = packer.MultiErrorAppend(errs,
+				errs = packersdk.MultiErrorAppend(errs,
 					fmt.Errorf("Bad source '%s': %s", src, err))
 			}
 		}
 	}
 
-	if len(p.config.Sources) < 1 {
-		errs = packer.MultiErrorAppend(errs,
-			errors.New("Source must be specified."))
+	if len(p.config.Sources) > 0 && p.config.Content != "" {
+		errs = packersdk.MultiErrorAppend(errs,
+			errors.New("source(s) conflicts with content."))
 	}
 
 	if p.config.Destination == "" {
-		errs = packer.MultiErrorAppend(errs,
+		errs = packersdk.MultiErrorAppend(errs,
 			errors.New("Destination must be specified."))
 	}
 
@@ -119,11 +127,24 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	return nil
 }
 
-func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.Communicator, generatedData map[string]interface{}) error {
+func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packersdk.Communicator, generatedData map[string]interface{}) error {
 	if generatedData == nil {
 		generatedData = make(map[string]interface{})
 	}
 	p.config.ctx.Data = generatedData
+
+	if p.config.Content != "" {
+		file, err := tmp.File("pkr-file-content")
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		if _, err := file.WriteString(p.config.Content); err != nil {
+			return err
+		}
+		p.config.Content = ""
+		p.config.Sources = append(p.config.Sources, file.Name())
+	}
 
 	if p.config.Direction == "download" {
 		return p.ProvisionDownload(ui, comm)
@@ -132,18 +153,18 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 	}
 }
 
-func (p *Provisioner) ProvisionDownload(ui packer.Ui, comm packer.Communicator) error {
+func (p *Provisioner) ProvisionDownload(ui packersdk.Ui, comm packersdk.Communicator) error {
 	dst, err := interpolate.Render(p.config.Destination, &p.config.ctx)
 	if err != nil {
 		return fmt.Errorf("Error interpolating destination: %s", err)
 	}
 	for _, src := range p.config.Sources {
+		dst := dst
 		src, err := interpolate.Render(src, &p.config.ctx)
 		if err != nil {
 			return fmt.Errorf("Error interpolating source: %s", err)
 		}
 
-		ui.Say(fmt.Sprintf("Downloading %s => %s", src, dst))
 		// ensure destination dir exists.  p.config.Destination may either be a file or a dir.
 		dir := dst
 		// if it doesn't end with a /, set dir as the parent dir
@@ -152,6 +173,8 @@ func (p *Provisioner) ProvisionDownload(ui packer.Ui, comm packer.Communicator) 
 		} else if !strings.HasSuffix(src, "/") && !strings.HasSuffix(src, "*") {
 			dst = filepath.Join(dst, filepath.Base(src))
 		}
+		ui.Say(fmt.Sprintf("Downloading %s => %s", src, dst))
+
 		if dir != "" {
 			err := os.MkdirAll(dir, os.FileMode(0755))
 			if err != nil {
@@ -181,7 +204,7 @@ func (p *Provisioner) ProvisionDownload(ui packer.Ui, comm packer.Communicator) 
 	return nil
 }
 
-func (p *Provisioner) ProvisionUpload(ui packer.Ui, comm packer.Communicator) error {
+func (p *Provisioner) ProvisionUpload(ui packersdk.Ui, comm packersdk.Communicator) error {
 	dst, err := interpolate.Render(p.config.Destination, &p.config.ctx)
 	if err != nil {
 		return fmt.Errorf("Error interpolating destination: %s", err)

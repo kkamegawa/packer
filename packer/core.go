@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -15,8 +16,12 @@ import (
 	multierror "github.com/hashicorp/go-multierror"
 	version "github.com/hashicorp/go-version"
 	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/packer/template"
-	"github.com/hashicorp/packer/template/interpolate"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	"github.com/hashicorp/packer-plugin-sdk/template"
+	"github.com/hashicorp/packer-plugin-sdk/template/interpolate"
+	packerregistry "github.com/hashicorp/packer/internal/registry"
+	"github.com/hashicorp/packer/internal/registry/env"
+	packerversion "github.com/hashicorp/packer/version"
 )
 
 // Core is the main executor of Packer. If Packer is being used as a
@@ -29,6 +34,7 @@ type Core struct {
 	builds     map[string]*template.Builder
 	version    string
 	secrets    []string
+	bucket     *packerregistry.Bucket
 
 	except []string
 	only   []string
@@ -49,16 +55,16 @@ type CoreConfig struct {
 }
 
 // The function type used to lookup Builder implementations.
-type BuilderFunc func(name string) (Builder, error)
+type BuilderFunc func(name string) (packersdk.Builder, error)
 
 // The function type used to lookup Hook implementations.
-type HookFunc func(name string) (Hook, error)
+type HookFunc func(name string) (packersdk.Hook, error)
 
 // The function type used to lookup PostProcessor implementations.
-type PostProcessorFunc func(name string) (PostProcessor, error)
+type PostProcessorFunc func(name string) (packersdk.PostProcessor, error)
 
 // The function type used to lookup Provisioner implementations.
-type ProvisionerFunc func(name string) (Provisioner, error)
+type ProvisionerFunc func(name string) (packersdk.Provisioner, error)
 
 type BasicStore interface {
 	Has(name string) bool
@@ -67,29 +73,50 @@ type BasicStore interface {
 
 type BuilderStore interface {
 	BasicStore
-	Start(name string) (Builder, error)
+	Start(name string) (packersdk.Builder, error)
+}
+
+type BuilderSet interface {
+	BuilderStore
+	Set(name string, starter func() (packersdk.Builder, error))
 }
 
 type ProvisionerStore interface {
 	BasicStore
-	Start(name string) (Provisioner, error)
+	Start(name string) (packersdk.Provisioner, error)
+}
+
+type ProvisionerSet interface {
+	ProvisionerStore
+	Set(name string, starter func() (packersdk.Provisioner, error))
 }
 
 type PostProcessorStore interface {
 	BasicStore
-	Start(name string) (PostProcessor, error)
+	Start(name string) (packersdk.PostProcessor, error)
+}
+
+type PostProcessorSet interface {
+	PostProcessorStore
+	Set(name string, starter func() (packersdk.PostProcessor, error))
+}
+
+type DatasourceStore interface {
+	BasicStore
+	Start(name string) (packersdk.Datasource, error)
+}
+
+type DatasourceSet interface {
+	DatasourceStore
+	Set(name string, starter func() (packersdk.Datasource, error))
 }
 
 // ComponentFinder is a struct that contains the various function
 // pointers necessary to look up components of Packer such as builders,
 // commands, etc.
 type ComponentFinder struct {
-	Hook HookFunc
-
-	// For HCL2
-	BuilderStore       BuilderStore
-	ProvisionerStore   ProvisionerStore
-	PostProcessorStore PostProcessorStore
+	Hook         HookFunc
+	PluginConfig *PluginConfig
 }
 
 // NewCore creates a new Core.
@@ -113,7 +140,18 @@ func (core *Core) Initialize() error {
 		return err
 	}
 	for _, secret := range core.secrets {
-		LogSecretFilter.Set(secret)
+		packersdk.LogSecretFilter.Set(secret)
+	}
+
+	if env.IsPAREnabled() {
+		var err error
+		core.bucket, err = packerregistry.NewBucketWithIteration(packerregistry.IterationOptions{
+			TemplateBaseDir: filepath.Dir(core.Template.Path),
+		})
+		if err != nil {
+			return err
+		}
+		core.bucket.LoadDefaultSettingsFromEnv()
 	}
 
 	// Go through and interpolate all the build names. We should be able
@@ -128,6 +166,8 @@ func (core *Core) Initialize() error {
 		}
 
 		core.builds[v] = b
+		// Get all builds slated within config ignoring any only or exclude flags.
+		core.bucket.RegisterBuildForComponent(b.Name)
 	}
 	return nil
 }
@@ -161,7 +201,7 @@ func (c *Core) BuildNames(only, except []string) []string {
 func (c *Core) generateCoreBuildProvisioner(rawP *template.Provisioner, rawName string) (CoreBuildProvisioner, error) {
 	// Get the provisioner
 	cbp := CoreBuildProvisioner{}
-	provisioner, err := c.components.ProvisionerStore.Start(rawP.Type)
+	provisioner, err := c.components.PluginConfig.Provisioners.Start(rawP.Type)
 	if err != nil {
 		return cbp, fmt.Errorf(
 			"error initializing provisioner '%s': %s",
@@ -220,9 +260,9 @@ func (c *Core) generateCoreBuildProvisioner(rawP *template.Provisioner, rawName 
 
 // This is used for json templates to launch the build plugins.
 // They will be prepared via b.Prepare() later.
-func (c *Core) GetBuilds(opts GetBuildsOptions) ([]Build, hcl.Diagnostics) {
+func (c *Core) GetBuilds(opts GetBuildsOptions) ([]packersdk.Build, hcl.Diagnostics) {
 	buildNames := c.BuildNames(opts.Only, opts.Except)
-	builds := []Build{}
+	builds := []packersdk.Build{}
 	diags := hcl.Diagnostics{}
 	for _, n := range buildNames {
 		b, err := c.Build(n)
@@ -268,7 +308,7 @@ func (c *Core) GetBuilds(opts GetBuildsOptions) ([]Build, hcl.Diagnostics) {
 }
 
 // Build returns the Build object for the given name.
-func (c *Core) Build(n string) (Build, error) {
+func (c *Core) Build(n string) (packersdk.Build, error) {
 	// Setup the builder
 	configBuilder, ok := c.builds[n]
 	if !ok {
@@ -280,7 +320,7 @@ func (c *Core) Build(n string) (Build, error) {
 
 	// the Start command launches the builder plugin of the given type without
 	// calling Prepare() or passing any build-specific details.
-	builder, err := c.components.BuilderStore.Start(configBuilder.Type)
+	builder, err := c.components.PluginConfig.Builders.Start(configBuilder.Type)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"error initializing builder '%s': %s",
@@ -340,7 +380,7 @@ func (c *Core) Build(n string) (Build, error) {
 			}
 
 			// Get the post-processor
-			postProcessor, err := c.components.PostProcessorStore.Start(rawP.Type)
+			postProcessor, err := c.components.PluginConfig.PostProcessors.Start(rawP.Type)
 			if err != nil {
 				return nil, fmt.Errorf(
 					"error initializing post-processor '%s': %s",
@@ -349,6 +389,14 @@ func (c *Core) Build(n string) (Build, error) {
 			if postProcessor == nil {
 				return nil, fmt.Errorf(
 					"post-processor type not found: %s", rawP.Type)
+			}
+
+			if c.bucket != nil {
+				postProcessor = &RegistryPostProcessor{
+					BuilderType:               n,
+					ArtifactMetadataPublisher: c.bucket,
+					PostProcessor:             postProcessor,
+				}
 			}
 
 			current = append(current, CoreBuildPostProcessor{
@@ -367,8 +415,26 @@ func (c *Core) Build(n string) (Build, error) {
 
 		postProcessors = append(postProcessors, current)
 	}
+	if c.bucket != nil {
+		postProcessors = append(postProcessors, []CoreBuildPostProcessor{
+			{
+				PostProcessor: &RegistryPostProcessor{
+					BuilderType:               n,
+					ArtifactMetadataPublisher: c.bucket,
+				},
+			},
+		})
+	}
 
 	// TODO hooks one day
+
+	if c.bucket != nil {
+		builder = &RegistryBuilder{
+			Name:                      n,
+			ArtifactMetadataPublisher: c.bucket,
+			Builder:                   builder,
+		}
+	}
 
 	// Return a structure that contains the plugins, their types, variables, and
 	// the raw builder config loaded from the json template
@@ -388,8 +454,9 @@ func (c *Core) Build(n string) (Build, error) {
 // Context returns an interpolation context.
 func (c *Core) Context() *interpolate.Context {
 	return &interpolate.Context{
-		TemplatePath:  c.Template.Path,
-		UserVariables: c.variables,
+		TemplatePath:            c.Template.Path,
+		UserVariables:           c.variables,
+		CorePackerVersionString: packerversion.FormattedVersion(),
 	}
 }
 
@@ -806,7 +873,6 @@ func (c *Core) renderVarsRecursively() (*interpolate.Context, error) {
 		for _, k := range deleteKeys {
 			for ind, kv := range sortedMap {
 				if kv.Key == k {
-					log.Printf("Deleting kv.Value: %s", kv.Value)
 					sortedMap = append(sortedMap[:ind], sortedMap[ind+1:]...)
 					break
 				}
@@ -841,4 +907,10 @@ func (c *Core) init() error {
 	}
 
 	return nil
+}
+
+/// GetRegistryBucket returns a configured bucket that can be used for
+// publishing build image artifacts to some HCP Packer Registry.
+func (c *Core) GetRegistryBucket() *packerregistry.Bucket {
+	return c.bucket
 }

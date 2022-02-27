@@ -1,9 +1,16 @@
 package hcl2template
 
 import (
+	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/hashicorp/go-version"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	"github.com/hashicorp/packer-plugin-sdk/template/config"
+	"github.com/hashicorp/packer/hcl2template/addrs"
 	. "github.com/hashicorp/packer/hcl2template/internal"
+	hcl2template "github.com/hashicorp/packer/hcl2template/internal"
 	"github.com/hashicorp/packer/packer"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -11,6 +18,7 @@ import (
 var (
 	refVBIsoUbuntu1204  = SourceRef{Type: "virtualbox-iso", Name: "ubuntu-1204"}
 	refAWSEBSUbuntu1604 = SourceRef{Type: "amazon-ebs", Name: "ubuntu-1604"}
+	refAWSV3MyImage     = SourceRef{Type: "amazon-v3-ebs", Name: "my-image"}
 	pTrue               = pointerToBool(true)
 )
 
@@ -22,7 +30,20 @@ func TestParser_complete(t *testing.T) {
 			defaultParser,
 			parseTestArgs{"testdata/complete", nil, nil},
 			&PackerConfig{
-				Basedir: "testdata/complete",
+				Packer: struct {
+					VersionConstraints []VersionConstraint
+					RequiredPlugins    []*RequiredPlugins
+				}{
+					VersionConstraints: []VersionConstraint{
+						{
+							Required: mustVersionConstraints(version.NewConstraint(">= v1")),
+						},
+					},
+					RequiredPlugins: nil,
+				},
+				CorePackerVersionString: lockedVersion,
+				Basedir:                 "testdata/complete",
+
 				InputVariables: Variables{
 					"foo": &Variable{
 						Name:   "foo",
@@ -56,6 +77,11 @@ func TestParser_complete(t *testing.T) {
 					"feefoo": &Variable{
 						Name:   "feefoo",
 						Values: []VariableAssignment{{From: "default", Value: cty.StringVal("value_image-id-default")}},
+						Type:   cty.String,
+					},
+					"data_source": &Variable{
+						Name:   "data_source",
+						Values: []VariableAssignment{{From: "default", Value: cty.StringVal("string")}},
 						Type:   cty.String,
 					},
 					"standard_tags": &Variable{
@@ -98,6 +124,20 @@ func TestParser_complete(t *testing.T) {
 							}),
 						}),
 					},
+					"supersecret": &Variable{
+						Name: "supersecret",
+						Values: []VariableAssignment{{From: "default",
+							Value: cty.StringVal("image-id-default-password")}},
+						Type:      cty.String,
+						Sensitive: true,
+					},
+				},
+				Datasources: Datasources{
+					DatasourceRef{Type: "amazon-ami", Name: "test"}: DatasourceBlock{
+						Type:  "amazon-ami",
+						Name:  "test",
+						value: cty.StringVal("foo"),
+					},
 				},
 				Sources: map[SourceRef]SourceBlock{
 					refVBIsoUbuntu1204:  {Type: "virtualbox-iso", Name: "ubuntu-1204"},
@@ -105,9 +145,13 @@ func TestParser_complete(t *testing.T) {
 				},
 				Builds: Builds{
 					&BuildBlock{
-						Sources: []SourceRef{
-							refVBIsoUbuntu1204,
-							refAWSEBSUbuntu1604,
+						Sources: []SourceUseBlock{
+							{
+								SourceRef: refVBIsoUbuntu1204,
+							},
+							{
+								SourceRef: refAWSEBSUbuntu1604,
+							},
 						},
 						ProvisionerBlocks: []*ProvisionerBlock{
 							{
@@ -115,6 +159,10 @@ func TestParser_complete(t *testing.T) {
 								PName: "provisioner that does something",
 							},
 							{PType: "file"},
+						},
+						ErrorCleanupProvisionerBlock: &ProvisionerBlock{
+							PType: "shell",
+							PName: "error-cleanup-provisioner that does something",
 						},
 						PostProcessorsLists: [][]*PostProcessorBlock{
 							{
@@ -154,11 +202,43 @@ func TestParser_complete(t *testing.T) {
 				},
 			},
 			false, false,
-			[]packer.Build{
+			[]packersdk.Build{
 				&packer.CoreBuild{
 					Type:     "virtualbox-iso.ubuntu-1204",
 					Prepared: true,
-					Builder:  basicMockBuilder,
+					Builder: &MockBuilder{
+						Config: MockConfig{
+							NestedMockConfig: NestedMockConfig{
+								// interpolates source and type in builder
+								String:   "ubuntu-1204-virtualbox-iso",
+								Int:      42,
+								Int64:    43,
+								Bool:     true,
+								Trilean:  config.TriTrue,
+								Duration: 10 * time.Second,
+								MapStringString: map[string]string{
+									"a": "b",
+									"c": "d",
+								},
+								SliceString: []string{
+									"a",
+									"b",
+									"c",
+								},
+								SliceSliceString: [][]string{
+									{"a", "b"},
+									{"c", "d"},
+								},
+								Tags:       []MockTag{},
+								Datasource: "string",
+							},
+							Nested: builderBasicNestedMockConfig,
+							NestedSlice: []NestedMockConfig{
+								builderBasicNestedMockConfig,
+								builderBasicNestedMockConfig,
+							},
+						},
+					},
 					Provisioners: []packer.CoreBuildProvisioner{
 						{
 							PType: "shell",
@@ -174,13 +254,20 @@ func TestParser_complete(t *testing.T) {
 							},
 						},
 					},
+					CleanupProvisioner: packer.CoreBuildProvisioner{
+						PType: "shell",
+						PName: "error-cleanup-provisioner that does something",
+						Provisioner: &HCL2Provisioner{
+							Provisioner: basicMockProvisioner,
+						},
+					},
 					PostProcessors: [][]packer.CoreBuildPostProcessor{
 						{
 							{
 								PType: "amazon-import",
 								PName: "something",
 								PostProcessor: &HCL2PostProcessor{
-									PostProcessor: basicMockPostProcessor,
+									PostProcessor: basicMockPostProcessorDynamicTags,
 								},
 								KeepInputArtifact: pTrue,
 							},
@@ -237,7 +324,20 @@ func TestParser_complete(t *testing.T) {
 								Int:    42,
 								Tags:   []MockTag{},
 							},
-							NestedSlice: []NestedMockConfig{},
+							Nested: hcl2template.NestedMockConfig{
+								Tags: []hcl2template.MockTag{
+									{Key: "Component", Value: "user-service"},
+									{Key: "Environment", Value: "production"},
+								},
+							},
+							NestedSlice: []NestedMockConfig{
+								hcl2template.NestedMockConfig{
+									Tags: []hcl2template.MockTag{
+										{Key: "Component", Value: "user-service"},
+										{Key: "Environment", Value: "production"},
+									},
+								},
+							},
 						},
 					},
 					Provisioners: []packer.CoreBuildProvisioner{
@@ -255,13 +355,20 @@ func TestParser_complete(t *testing.T) {
 							},
 						},
 					},
+					CleanupProvisioner: packer.CoreBuildProvisioner{
+						PType: "shell",
+						PName: "error-cleanup-provisioner that does something",
+						Provisioner: &HCL2Provisioner{
+							Provisioner: basicMockProvisioner,
+						},
+					},
 					PostProcessors: [][]packer.CoreBuildPostProcessor{
 						{
 							{
 								PType: "amazon-import",
 								PName: "something",
 								PostProcessor: &HCL2PostProcessor{
-									PostProcessor: basicMockPostProcessor,
+									PostProcessor: basicMockPostProcessorDynamicTags,
 								},
 								KeepInputArtifact: pTrue,
 							},
@@ -337,6 +444,221 @@ func TestParser_ValidateFilterOption(t *testing.T) {
 	}
 }
 
+func TestParser_no_init(t *testing.T) {
+	defaultParser := getBasicParser()
+
+	tests := []parseTest{
+		{"working build with imports",
+			defaultParser,
+			parseTestArgs{"testdata/init/imports", nil, nil},
+			&PackerConfig{
+				Packer: struct {
+					VersionConstraints []VersionConstraint
+					RequiredPlugins    []*RequiredPlugins
+				}{
+					VersionConstraints: []VersionConstraint{
+						{
+							Required: mustVersionConstraints(version.NewConstraint(">= v1")),
+						},
+					},
+					RequiredPlugins: []*RequiredPlugins{
+						{
+							RequiredPlugins: map[string]*RequiredPlugin{
+								"amazon": {
+									Name:   "amazon",
+									Source: "github.com/hashicorp/amazon",
+									Type: &addrs.Plugin{
+										Type:      "amazon",
+										Namespace: "hashicorp",
+										Hostname:  "github.com",
+									},
+									Requirement: VersionConstraint{
+										Required: mustVersionConstraints(version.NewConstraint(">= v0")),
+									},
+								},
+								"amazon-v1": {
+									Name:   "amazon-v1",
+									Source: "github.com/hashicorp/amazon",
+									Type: &addrs.Plugin{
+										Type:      "amazon",
+										Namespace: "hashicorp",
+										Hostname:  "github.com",
+									},
+									Requirement: VersionConstraint{
+										Required: mustVersionConstraints(version.NewConstraint(">= v1")),
+									},
+								},
+								"amazon-v2": {
+									Name:   "amazon-v2",
+									Source: "github.com/hashicorp/amazon",
+									Type: &addrs.Plugin{
+										Type:      "amazon",
+										Namespace: "hashicorp",
+										Hostname:  "github.com",
+									},
+									Requirement: VersionConstraint{
+										Required: mustVersionConstraints(version.NewConstraint(">= v2")),
+									},
+								},
+								"amazon-v3": {
+									Name:   "amazon-v3",
+									Source: "github.com/hashicorp/amazon",
+									Type: &addrs.Plugin{
+										Type:      "amazon",
+										Namespace: "hashicorp",
+										Hostname:  "github.com",
+									},
+									Requirement: VersionConstraint{
+										Required: mustVersionConstraints(version.NewConstraint(">= v3")),
+									},
+								},
+								"amazon-v3-azr": {
+									Name:   "amazon-v3-azr",
+									Source: "github.com/azr/amazon",
+									Type: &addrs.Plugin{
+										Type:      "amazon",
+										Namespace: "azr",
+										Hostname:  "github.com",
+									},
+									Requirement: VersionConstraint{
+										Required: mustVersionConstraints(version.NewConstraint(">= v3")),
+									},
+								},
+								"amazon-v4": {
+									Name:   "amazon-v4",
+									Source: "github.com/hashicorp/amazon",
+									Type: &addrs.Plugin{
+										Type:      "amazon",
+										Namespace: "hashicorp",
+										Hostname:  "github.com",
+									},
+									Requirement: VersionConstraint{
+										Required: mustVersionConstraints(version.NewConstraint(">= v4")),
+									},
+								},
+							},
+						},
+					},
+				},
+				CorePackerVersionString: lockedVersion,
+				Basedir:                 "testdata/init/imports",
+
+				InputVariables: Variables{
+					"foo": &Variable{
+						Name:   "foo",
+						Values: []VariableAssignment{{From: "default", Value: cty.StringVal("value")}},
+						Type:   cty.String,
+					},
+					"image_id": &Variable{
+						Name:   "image_id",
+						Values: []VariableAssignment{{From: "default", Value: cty.StringVal("image-id-default")}},
+						Type:   cty.String,
+					},
+					"port": &Variable{
+						Name:   "port",
+						Values: []VariableAssignment{{From: "default", Value: cty.NumberIntVal(42)}},
+						Type:   cty.Number,
+					},
+					"availability_zone_names": &Variable{
+						Name: "availability_zone_names",
+						Values: []VariableAssignment{{
+							From: "default",
+							Value: cty.ListVal([]cty.Value{
+								cty.StringVal("A"),
+								cty.StringVal("B"),
+								cty.StringVal("C"),
+							}),
+						}},
+						Type: cty.List(cty.String),
+					},
+				},
+				Sources: nil,
+				Builds:  nil,
+			},
+			false, false,
+			[]packersdk.Build{},
+			false,
+		},
+
+		{"duplicate required plugin accessor fails",
+			defaultParser,
+			parseTestArgs{"testdata/init/duplicate_required_plugins", nil, nil},
+			nil,
+			true, true,
+			[]packersdk.Build{},
+			false,
+		},
+		{"invalid_inexplicit_source.pkr.hcl",
+			defaultParser,
+			parseTestArgs{"testdata/init/invalid_inexplicit_source.pkr.hcl", nil, nil},
+			&PackerConfig{
+				Packer: struct {
+					VersionConstraints []VersionConstraint
+					RequiredPlugins    []*RequiredPlugins
+				}{
+					VersionConstraints: nil,
+					RequiredPlugins: []*RequiredPlugins{
+						{},
+					},
+				},
+				CorePackerVersionString: lockedVersion,
+				Basedir:                 filepath.Clean("testdata/init"),
+			},
+			true, true,
+			[]packersdk.Build{},
+			false,
+		},
+		{"invalid_short_source.pkr.hcl",
+			defaultParser,
+			parseTestArgs{"testdata/init/invalid_short_source.pkr.hcl", nil, nil},
+			&PackerConfig{
+				Packer: struct {
+					VersionConstraints []VersionConstraint
+					RequiredPlugins    []*RequiredPlugins
+				}{
+					VersionConstraints: nil,
+					RequiredPlugins: []*RequiredPlugins{
+						{},
+					},
+				},
+				CorePackerVersionString: lockedVersion,
+				Basedir:                 filepath.Clean("testdata/init"),
+			},
+			true, true,
+			[]packersdk.Build{},
+			false,
+		},
+		{"invalid_inexplicit_source_2.pkr.hcl",
+			defaultParser,
+			parseTestArgs{"testdata/init/invalid_inexplicit_source_2.pkr.hcl", nil, nil},
+			&PackerConfig{
+				Packer: struct {
+					VersionConstraints []VersionConstraint
+					RequiredPlugins    []*RequiredPlugins
+				}{
+					VersionConstraints: nil,
+					RequiredPlugins: []*RequiredPlugins{
+						{},
+					},
+				},
+				CorePackerVersionString: lockedVersion,
+				Basedir:                 filepath.Clean("testdata/init"),
+			},
+			true, true,
+			[]packersdk.Build{},
+			false,
+		},
+	}
+	testParse_only_Parse(t, tests)
+}
+
 func pointerToBool(b bool) *bool {
 	return &b
+}
+
+func mustVersionConstraints(vs version.Constraints, err error) version.Constraints {
+	if err != nil {
+		panic(err)
+	}
+	return vs
 }

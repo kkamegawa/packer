@@ -1,4 +1,4 @@
-//go:generate mapstructure-to-hcl2 -type Config
+//go:generate packer-sdc mapstructure-to-hcl2 -type Config
 
 // This package implements a provisioner for Packer that executes powershell
 // scripts within the remote machine.
@@ -17,15 +17,15 @@ import (
 	"time"
 
 	"github.com/hashicorp/hcl/v2/hcldec"
-	"github.com/hashicorp/packer/common"
-	"github.com/hashicorp/packer/common/guestexec"
-	"github.com/hashicorp/packer/common/retry"
-	"github.com/hashicorp/packer/common/shell"
-	"github.com/hashicorp/packer/common/uuid"
-	"github.com/hashicorp/packer/helper/config"
-	"github.com/hashicorp/packer/packer"
-	"github.com/hashicorp/packer/packer/tmp"
-	"github.com/hashicorp/packer/template/interpolate"
+	"github.com/hashicorp/packer-plugin-sdk/guestexec"
+	"github.com/hashicorp/packer-plugin-sdk/multistep/commonsteps"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	"github.com/hashicorp/packer-plugin-sdk/retry"
+	"github.com/hashicorp/packer-plugin-sdk/shell"
+	"github.com/hashicorp/packer-plugin-sdk/template/config"
+	"github.com/hashicorp/packer-plugin-sdk/template/interpolate"
+	"github.com/hashicorp/packer-plugin-sdk/tmp"
+	"github.com/hashicorp/packer-plugin-sdk/uuid"
 )
 
 var retryableSleep = 2 * time.Second
@@ -78,9 +78,10 @@ type Config struct {
 
 	remoteCleanUpScriptPath string
 
-	// If set, sets PowerShell's [PSDebug mode](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/set-psdebug?view=powershell-7)
-	//  in order to make script debugging easier. For instance, setting the
-	//    value to 1 results in adding this to the execute command:
+	// If set, sets PowerShell's [PSDebug mode
+	// on](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/set-psdebug?view=powershell-7)
+	// in order to make script debugging easier. For instance, setting the value
+	// to 1 results in adding this to the execute command:
 	//
 	//    ``` powershell
 	//    Set-PSDebug -Trace 1
@@ -92,7 +93,7 @@ type Config struct {
 
 type Provisioner struct {
 	config        Config
-	communicator  packer.Communicator
+	communicator  packersdk.Communicator
 	generatedData map[string]interface{}
 }
 
@@ -179,12 +180,12 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 
 	var errs error
 	if p.config.Script != "" && len(p.config.Scripts) > 0 {
-		errs = packer.MultiErrorAppend(errs,
+		errs = packersdk.MultiErrorAppend(errs,
 			errors.New("Only one of script or scripts can be specified."))
 	}
 
 	if p.config.ElevatedUser == "" && p.config.ElevatedPassword != "" {
-		errs = packer.MultiErrorAppend(errs,
+		errs = packersdk.MultiErrorAppend(errs,
 			errors.New("Must supply an 'elevated_user' if 'elevated_password' provided"))
 	}
 
@@ -193,16 +194,16 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	if len(p.config.Scripts) == 0 && p.config.Inline == nil {
-		errs = packer.MultiErrorAppend(errs,
+		errs = packersdk.MultiErrorAppend(errs,
 			errors.New("Either a script file or inline script must be specified."))
 	} else if len(p.config.Scripts) > 0 && p.config.Inline != nil {
-		errs = packer.MultiErrorAppend(errs,
+		errs = packersdk.MultiErrorAppend(errs,
 			errors.New("Only a script file or an inline script can be specified, not both."))
 	}
 
 	for _, path := range p.config.Scripts {
 		if _, err := os.Stat(path); err != nil {
-			errs = packer.MultiErrorAppend(errs,
+			errs = packersdk.MultiErrorAppend(errs,
 				fmt.Errorf("Bad script '%s': %s", path, err))
 		}
 	}
@@ -211,20 +212,20 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	for _, kv := range p.config.Vars {
 		vs := strings.SplitN(kv, "=", 2)
 		if len(vs) != 2 || vs[0] == "" {
-			errs = packer.MultiErrorAppend(errs,
+			errs = packersdk.MultiErrorAppend(errs,
 				fmt.Errorf("Environment variable not in format 'key=value': %s", kv))
 		}
 	}
 
 	if p.config.ExecutionPolicy > 7 {
-		errs = packer.MultiErrorAppend(errs, fmt.Errorf(`Invalid execution `+
+		errs = packersdk.MultiErrorAppend(errs, fmt.Errorf(`Invalid execution `+
 			`policy provided. Please supply one of: "bypass", "allsigned",`+
 			` "default", "remotesigned", "restricted", "undefined", `+
 			`"unrestricted", "none".`))
 	}
 
 	if !(p.config.DebugMode >= 0 && p.config.DebugMode <= 2) {
-		errs = packer.MultiErrorAppend(errs, fmt.Errorf("%d is an invalid Trace level for `debug_mode`; valid values are 0, 1, and 2", p.config.DebugMode))
+		errs = packersdk.MultiErrorAppend(errs, fmt.Errorf("%d is an invalid Trace level for `debug_mode`; valid values are 0, 1, and 2", p.config.DebugMode))
 	}
 
 	if errs != nil {
@@ -257,7 +258,7 @@ func extractScript(p *Provisioner) (string, error) {
 	return temp.Name(), nil
 }
 
-func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.Communicator, generatedData map[string]interface{}) error {
+func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packersdk.Communicator, generatedData map[string]interface{}) error {
 	ui.Say(fmt.Sprintf("Provisioning with Powershell..."))
 	p.communicator = comm
 	p.generatedData = generatedData
@@ -285,9 +286,9 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 		if err != nil {
 			return fmt.Errorf("Error stating powershell script: %s", err)
 		}
-		if strings.HasSuffix(p.config.RemotePath, `\`) {
+		if os.IsPathSeparator(p.config.RemotePath[len(p.config.RemotePath)-1]) {
 			// path is a directory
-			p.config.RemotePath += filepath.Base((fi).Name())
+			p.config.RemotePath += filepath.Base(fi.Name())
 		}
 		f, err := os.Open(path)
 		if err != nil {
@@ -304,7 +305,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 		// single retryable function so that we don't end up with the case
 		// that the upload succeeded, a restart is initiated, and then the
 		// command is executed but the file doesn't exist any longer.
-		var cmd *packer.RemoteCmd
+		var cmd *packersdk.RemoteCmd
 		err = retry.Config{StartTimeout: p.config.StartRetryTimeout}.Run(ctx, func(ctx context.Context) error {
 			if _, err := f.Seek(0, 0); err != nil {
 				return err
@@ -313,7 +314,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 				return fmt.Errorf("Error uploading script: %s", err)
 			}
 
-			cmd = &packer.RemoteCmd{Command: command}
+			cmd = &packersdk.RemoteCmd{Command: command}
 			return cmd.RunWithUi(ctx, comm, ui)
 		})
 		if err != nil {
@@ -343,7 +344,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 			return err
 		}
 
-		cmd := &packer.RemoteCmd{Command: command}
+		cmd := &packersdk.RemoteCmd{Command: command}
 		return cmd.RunWithUi(ctx, comm, ui)
 	})
 	if err != nil {
@@ -407,15 +408,15 @@ func (p *Provisioner) createFlattenedEnvVars(elevated bool) (flattened string) {
 
 	// expose ip address variables
 	httpAddr := p.generatedData["PackerHTTPAddr"]
-	if httpAddr != nil && httpAddr != common.HttpAddrNotImplemented {
+	if httpAddr != nil && httpAddr != commonsteps.HttpAddrNotImplemented {
 		envVars["PACKER_HTTP_ADDR"] = httpAddr.(string)
 	}
 	httpIP := p.generatedData["PackerHTTPIP"]
-	if httpIP != nil && httpIP != common.HttpIPNotImplemented {
+	if httpIP != nil && httpIP != commonsteps.HttpIPNotImplemented {
 		envVars["PACKER_HTTP_IP"] = httpIP.(string)
 	}
 	httpPort := p.generatedData["PackerHTTPPort"]
-	if httpPort != nil && httpPort != common.HttpPortNotImplemented {
+	if httpPort != nil && httpPort != commonsteps.HttpPortNotImplemented {
 		envVars["PACKER_HTTP_PORT"] = httpPort.(string)
 	}
 
@@ -530,7 +531,7 @@ func (p *Provisioner) createCommandTextPrivileged() (command string, err error) 
 	return command, err
 }
 
-func (p *Provisioner) Communicator() packer.Communicator {
+func (p *Provisioner) Communicator() packersdk.Communicator {
 	return p.communicator
 }
 

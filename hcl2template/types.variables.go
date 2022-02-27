@@ -24,6 +24,9 @@ const badIdentifierDetail = "A name must start with a letter or underscore and m
 type LocalBlock struct {
 	Name string
 	Expr hcl.Expression
+	// When Sensitive is set to true Packer will try its best to hide/obfuscate
+	// the variable from the output stream. By replacing the text.
+	Sensitive bool
 }
 
 // VariableAssignment represents a way a variable was set: the expression
@@ -79,7 +82,6 @@ func (v *Variable) GoString() string {
 
 // validateValue ensures that all of the configured custom validations for a
 // variable value are passing.
-//
 func (v *Variable) validateValue(val VariableAssignment) (diags hcl.Diagnostics) {
 	if len(v.Validations) == 0 {
 		log.Printf("[TRACE] validateValue: not active for %s, so skipping", v.Name)
@@ -150,19 +152,29 @@ func (v *Variable) validateValue(val VariableAssignment) (diags hcl.Diagnostics)
 }
 
 // Value returns the last found value from the list of variable settings.
-func (v *Variable) Value() (cty.Value, hcl.Diagnostics) {
+func (v *Variable) Value() cty.Value {
 	if len(v.Values) == 0 {
-		return cty.UnknownVal(v.Type), hcl.Diagnostics{&hcl.Diagnostic{
+		return cty.UnknownVal(v.Type)
+	}
+	val := v.Values[len(v.Values)-1]
+	return val.Value
+}
+
+// ValidateValue tells if the selected value for the Variable is valid according
+// to its validation settings.
+func (v *Variable) ValidateValue() hcl.Diagnostics {
+	if len(v.Values) == 0 {
+		return hcl.Diagnostics{&hcl.Diagnostic{
 			Severity: hcl.DiagError,
 			Summary:  fmt.Sprintf("Unset variable %q", v.Name),
 			Detail: "A used variable must be set or have a default value; see " +
-				"https://packer.io/docs/configuration/from-1.5/syntax for " +
+				"https://packer.io/docs/templates/hcl_templates/syntax for " +
 				"details.",
 			Context: v.Range.Ptr(),
 		}}
 	}
-	val := v.Values[len(v.Values)-1]
-	return val.Value, v.validateValue(v.Values[len(v.Values)-1])
+
+	return v.validateValue(v.Values[len(v.Values)-1])
 }
 
 type Variables map[string]*Variable
@@ -175,15 +187,21 @@ func (variables Variables) Keys() []string {
 	return keys
 }
 
-func (variables Variables) Values() (map[string]cty.Value, hcl.Diagnostics) {
+func (variables Variables) Values() map[string]cty.Value {
 	res := map[string]cty.Value{}
-	var diags hcl.Diagnostics
 	for k, v := range variables {
-		value, moreDiags := v.Value()
-		diags = append(diags, moreDiags...)
+		value := v.Value()
 		res[k] = value
 	}
-	return res, diags
+	return res
+}
+
+func (variables Variables) ValidateValues() hcl.Diagnostics {
+	var diags hcl.Diagnostics
+	for _, v := range variables {
+		diags = append(diags, v.ValidateValue()...)
+	}
+	return diags
 }
 
 // decodeVariable decodes a variable key and value into Variables
@@ -246,6 +264,46 @@ var variableBlockSchema = &hcl.BodySchema{
 	},
 }
 
+var localBlockSchema = &hcl.BodySchema{
+	Attributes: []hcl.AttributeSchema{
+		{
+			Name: "expression",
+		},
+		{
+			Name: "sensitive",
+		},
+	},
+}
+
+func decodeLocalBlock(block *hcl.Block) (*LocalBlock, hcl.Diagnostics) {
+	name := block.Labels[0]
+
+	content, diags := block.Body.Content(localBlockSchema)
+	if !hclsyntax.ValidIdentifier(name) {
+		diags = append(diags, &hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  "Invalid local name",
+			Detail:   badIdentifierDetail,
+			Subject:  &block.LabelRanges[0],
+		})
+	}
+
+	l := &LocalBlock{
+		Name: name,
+	}
+
+	if attr, exists := content.Attributes["sensitive"]; exists {
+		valDiags := gohcl.DecodeExpression(attr.Expr, nil, &l.Sensitive)
+		diags = append(diags, valDiags...)
+	}
+
+	if def, ok := content.Attributes["expression"]; ok {
+		l.Expr = def.Expr
+	}
+
+	return l, diags
+}
+
 // decodeVariableBlock decodes a "variable" block
 // ectx is passed only in the evaluation of the default value.
 func (variables *Variables) decodeVariableBlock(block *hcl.Block, ectx *hcl.EvalContext) hcl.Diagnostics {
@@ -254,7 +312,6 @@ func (variables *Variables) decodeVariableBlock(block *hcl.Block, ectx *hcl.Eval
 	}
 
 	if _, found := (*variables)[block.Labels[0]]; found {
-
 		return []*hcl.Diagnostic{{
 			Severity: hcl.DiagError,
 			Summary:  "Duplicate variable",
@@ -278,6 +335,7 @@ func (variables *Variables) decodeVariableBlock(block *hcl.Block, ectx *hcl.Eval
 	v := &Variable{
 		Name:  name,
 		Range: block.DefRange,
+		Type:  cty.DynamicPseudoType,
 	}
 
 	if attr, exists := content.Attributes["description"]; exists {
@@ -329,7 +387,9 @@ func (variables *Variables) decodeVariableBlock(block *hcl.Block, ectx *hcl.Eval
 
 		// It's possible no type attribute was assigned so lets make sure we
 		// have a valid type otherwise there could be issues parsing the value.
-		if v.Type == cty.NilType {
+		if v.Type == cty.DynamicPseudoType &&
+			!defaultValue.Type().Equals(cty.EmptyObject) &&
+			!defaultValue.Type().Equals(cty.EmptyTuple) {
 			v.Type = defaultValue.Type()
 		}
 	}
@@ -695,7 +755,7 @@ func (cfg *PackerConfig) collectInputVariableValues(env []string, files []*hcl.F
 // The specified filename is to identify the source of where value originated from in the diagnostics report, if there is an error.
 func expressionFromVariableDefinition(filename string, value string, variableType cty.Type) (hclsyntax.Expression, hcl.Diagnostics) {
 	switch variableType {
-	case cty.String, cty.Number, cty.NilType:
+	case cty.String, cty.Number, cty.NilType, cty.DynamicPseudoType:
 		// when the type is nil (not set in a variable block) we default to
 		// interpreting everything as a string literal.
 		return &hclsyntax.LiteralValueExpr{Val: cty.StringVal(value)}, nil

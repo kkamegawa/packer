@@ -1,34 +1,38 @@
-import VERSION from 'data/version.js'
-import ProductDownloader from '@hashicorp/react-product-downloader'
-import Head from 'next/head'
-import HashiHead from '@hashicorp/react-head'
+import VERSION from 'data/version'
+import { productSlug } from 'data/metadata'
+import ProductDownloadsPage from '@hashicorp/react-product-downloads-page'
+import { generateStaticProps } from '@hashicorp/react-product-downloads-page/server'
+import s from './style.module.css'
 
-export default function DownloadsPage({ releaseData }) {
+export default function DownloadsPage(staticProps) {
   return (
-    <div id="p-downloads" className="g-container">
-      <HashiHead is={Head} title="Downloads | Packer by HashiCorp" />
-      <ProductDownloader
-        product="Packer"
-        version={VERSION}
-        releaseData={releaseData}
-      />
-    </div>
+    <ProductDownloadsPage
+      getStartedDescription="Follow step-by-step tutorials on the essentials of Packer."
+      getStartedLinks={[
+        {
+          label: 'View all Packer tutorials',
+          href: 'https://learn.hashicorp.com/packer',
+        },
+      ]}
+      logo={
+        <img
+          className={s.logo}
+          alt="Packer"
+          src={require('./img/packer-logo.svg')}
+        />
+      }
+      tutorialLink={{
+        href: 'https://learn.hashicorp.com/packer',
+        label: 'View Tutorials at HashiCorp Learn',
+      }}
+      {...staticProps}
+    />
   )
 }
 
 export async function getStaticProps() {
-  return fetch(`https://releases.hashicorp.com/packer/${VERSION}/index.json`)
-    .then((res) => res.json())
-    .then((releaseData) => ({ props: { releaseData } }))
-    .catch(() => {
-      throw new Error(
-        `--------------------------------------------------------
-        Unable to resolve version ${VERSION} on releases.hashicorp.com from link
-        <https://releases.hashicorp.com/packer/${VERSION}/index.json>. Usually this
-        means that the specified version has not yet been released. The downloads page
-        version can only be updated after the new version has been released, to ensure
-        that it works for all users.
-        ----------------------------------------------------------`
-      )
-    })
+  return generateStaticProps({
+    product: productSlug,
+    latestVersion: VERSION,
+  })
 }

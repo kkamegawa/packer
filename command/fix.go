@@ -9,8 +9,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/hashicorp/packer-plugin-sdk/template"
 	"github.com/hashicorp/packer/fix"
-	"github.com/hashicorp/packer/template"
 
 	"github.com/posener/complete"
 )
@@ -50,6 +50,10 @@ func (c *FixCommand) ParseArgs(args []string) (*FixArgs, int) {
 }
 
 func (c *FixCommand) RunContext(ctx context.Context, cla *FixArgs) int {
+	if hcl2, _ := isHCLLoaded(cla.Path); hcl2 {
+		c.Ui.Error("packer fix only works with JSON files for now.")
+		return 1
+	}
 	// Read the file for decoding
 	tplF, err := os.Open(cla.Path)
 	if err != nil {

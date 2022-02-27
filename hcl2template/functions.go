@@ -63,11 +63,13 @@ func Functions(basedir string) map[string]function.Function {
 		"formatdate":         stdlib.FormatDateFunc,
 		"formatlist":         stdlib.FormatListFunc,
 		"indent":             stdlib.IndentFunc,
-		"index":              stdlib.IndexFunc,
+		"index":              pkrfunction.IndexFunc, // stdlib.IndexFunc is not compatible
 		"join":               stdlib.JoinFunc,
 		"jsondecode":         stdlib.JSONDecodeFunc,
 		"jsonencode":         stdlib.JSONEncodeFunc,
 		"keys":               stdlib.KeysFunc,
+		"legacy_isotime":     pkrfunction.LegacyIsotimeFunc,
+		"legacy_strftime":    pkrfunction.LegacyStrftimeFunc,
 		"length":             pkrfunction.LengthFunc,
 		"log":                stdlib.LogFunc,
 		"lookup":             stdlib.LookupFunc,
@@ -80,8 +82,10 @@ func Functions(basedir string) map[string]function.Function {
 		"pathexpand":         filesystem.PathExpandFunc,
 		"pow":                stdlib.PowFunc,
 		"range":              stdlib.RangeFunc,
-		"reverse":            stdlib.ReverseFunc,
+		"reverse":            stdlib.ReverseListFunc,
 		"replace":            stdlib.ReplaceFunc,
+		"regex":              stdlib.RegexFunc,
+		"regexall":           stdlib.RegexAllFunc,
 		"regex_replace":      stdlib.RegexReplaceFunc,
 		"rsadecrypt":         crypto.RsaDecryptFunc,
 		"setintersection":    stdlib.SetIntersectionFunc,
@@ -114,6 +118,12 @@ func Functions(basedir string) map[string]function.Function {
 		"yamlencode":         ctyyaml.YAMLEncodeFunc,
 		"zipmap":             stdlib.ZipmapFunc,
 	}
+
+	funcs["templatefile"] = pkrfunction.MakeTemplateFileFunc(basedir, func() map[string]function.Function {
+		// The templatefile function prevents recursive calls to itself
+		// by copying this map and overwriting the "templatefile" entry.
+		return funcs
+	})
 
 	return funcs
 }
