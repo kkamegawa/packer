@@ -29,7 +29,7 @@ func (c *PluginsInstallCommand) Help() string {
 	helpText := `
 Usage: packer plugins install <plugin> [<version constraint>]
 
-  This command will install the most recent compatible Packer plugin matching 
+  This command will install the most recent compatible Packer plugin matching
   version constraint.
   When the version constraint is omitted, the most recent version will be
   installed.
@@ -84,6 +84,10 @@ func (c *PluginsInstallCommand) RunContext(buildCtx context.Context, args []stri
 			return 1
 		}
 		pluginRequirement.VersionConstraints = constraints
+	}
+
+	if runtime.GOOS == "windows" && opts.Ext == "" {
+		opts.BinaryInstallationOptions.Ext = ".exe"
 	}
 
 	getters := []plugingetter.Getter{
