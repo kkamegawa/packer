@@ -7,12 +7,11 @@ import (
 	"strings"
 
 	"github.com/gobwas/glob"
-	"github.com/hashicorp/hcl/v2"
+	hcl "github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hcldec"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	pkrfunction "github.com/hashicorp/packer/hcl2template/function"
-	packerregistry "github.com/hashicorp/packer/internal/registry"
 	"github.com/hashicorp/packer/packer"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
@@ -54,8 +53,8 @@ type PackerConfig struct {
 	// Builds is the list of Build blocks defined in the config files.
 	Builds Builds
 
-	// Represents registry bucket defined in the config files.
-	Bucket *packerregistry.Bucket
+	// HCPVars is the list of HCP-set variables for use later in a template
+	HCPVars map[string]cty.Value
 
 	parser *Parser
 	files  []*hcl.File
@@ -69,7 +68,7 @@ type PackerConfig struct {
 }
 
 type ValidationOptions struct {
-	Strict bool
+	WarnOnUndeclaredVar bool
 }
 
 const (
@@ -119,11 +118,13 @@ func (cfg *PackerConfig) EvalContext(ctx BlockContext, variables map[string]cty.
 		},
 	}
 
-	// Store the iteration_id, if it exists. Otherwise, it'll be "unknown"
-	if cfg.Bucket != nil {
+	iterID, ok := cfg.HCPVars["iterationID"]
+	if ok {
+		log.Printf("iterationID set: %q", iterID)
+
 		ectx.Variables[packerAccessor] = cty.ObjectVal(map[string]cty.Value{
 			"version":     cty.StringVal(cfg.CorePackerVersionString),
-			"iterationID": cty.StringVal(cfg.Bucket.Iteration.ID),
+			"iterationID": iterID,
 		})
 	}
 
@@ -545,14 +546,6 @@ func (cfg *PackerConfig) getCoreBuildPostProcessors(source SourceUseBlock, block
 				continue
 			}
 
-			if cfg.Bucket != nil {
-				postProcessor = &packer.RegistryPostProcessor{
-					ArtifactMetadataPublisher: cfg.Bucket,
-					BuilderType:               source.String(),
-					PostProcessor:             postProcessor,
-				}
-			}
-
 			pps = append(pps, packer.CoreBuildPostProcessor{
 				PostProcessor:     postProcessor,
 				PName:             ppb.PName,
@@ -686,17 +679,6 @@ func (cfg *PackerConfig) GetBuilds(opts packer.GetBuildsOptions) ([]packersdk.Bu
 				continue
 			}
 
-			if cfg.Bucket != nil {
-				pps = append(pps, []packer.CoreBuildPostProcessor{
-					{
-						PostProcessor: &packer.RegistryPostProcessor{
-							BuilderType:               srcUsage.String(),
-							ArtifactMetadataPublisher: cfg.Bucket,
-						},
-					},
-				})
-			}
-
 			if build.ErrorCleanupProvisionerBlock != nil {
 				if !build.ErrorCleanupProvisionerBlock.OnlyExcept.Skip(srcUsage.String()) {
 					errorCleanupProv, moreDiags := cfg.getCoreBuildProvisioner(srcUsage, build.ErrorCleanupProvisionerBlock, cfg.EvalContext(BuildContext, variables))
@@ -705,14 +687,6 @@ func (cfg *PackerConfig) GetBuilds(opts packer.GetBuildsOptions) ([]packersdk.Bu
 						continue
 					}
 					pcb.CleanupProvisioner = errorCleanupProv
-				}
-			}
-
-			if cfg.Bucket != nil && cfg.Bucket.Validate() == nil {
-				builder = &packer.RegistryBuilder{
-					Name:                      srcUsage.String(),
-					Builder:                   builder,
-					ArtifactMetadataPublisher: cfg.Bucket,
 				}
 			}
 
