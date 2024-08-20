@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
 package hcl2template
 
 import (
@@ -18,7 +21,7 @@ import (
 var (
 	refVBIsoUbuntu1204  = SourceRef{Type: "virtualbox-iso", Name: "ubuntu-1204"}
 	refAWSEBSUbuntu1604 = SourceRef{Type: "amazon-ebs", Name: "ubuntu-1604"}
-	refAWSV3MyImage     = SourceRef{Type: "amazon-v3-ebs", Name: "my-image"}
+	refNull             = SourceRef{Type: "null", Name: "test"}
 	pTrue               = pointerToBool(true)
 )
 
@@ -204,8 +207,9 @@ func TestParser_complete(t *testing.T) {
 			false, false,
 			[]packersdk.Build{
 				&packer.CoreBuild{
-					Type:     "virtualbox-iso.ubuntu-1204",
-					Prepared: true,
+					Type:        "virtualbox-iso.ubuntu-1204",
+					BuilderType: "virtualbox-iso",
+					Prepared:    true,
 					Builder: &MockBuilder{
 						Config: MockConfig{
 							NestedMockConfig: NestedMockConfig{
@@ -315,8 +319,9 @@ func TestParser_complete(t *testing.T) {
 					},
 				},
 				&packer.CoreBuild{
-					Type:     "amazon-ebs.ubuntu-1604",
-					Prepared: true,
+					Type:        "amazon-ebs.ubuntu-1604",
+					BuilderType: "amazon-ebs",
+					Prepared:    true,
 					Builder: &MockBuilder{
 						Config: MockConfig{
 							NestedMockConfig: NestedMockConfig{
@@ -468,9 +473,7 @@ func TestParser_no_init(t *testing.T) {
 									Name:   "amazon",
 									Source: "github.com/hashicorp/amazon",
 									Type: &addrs.Plugin{
-										Type:      "amazon",
-										Namespace: "hashicorp",
-										Hostname:  "github.com",
+										Source: "github.com/hashicorp/amazon",
 									},
 									Requirement: VersionConstraint{
 										Required: mustVersionConstraints(version.NewConstraint(">= v0")),
@@ -480,9 +483,7 @@ func TestParser_no_init(t *testing.T) {
 									Name:   "amazon-v1",
 									Source: "github.com/hashicorp/amazon",
 									Type: &addrs.Plugin{
-										Type:      "amazon",
-										Namespace: "hashicorp",
-										Hostname:  "github.com",
+										Source: "github.com/hashicorp/amazon",
 									},
 									Requirement: VersionConstraint{
 										Required: mustVersionConstraints(version.NewConstraint(">= v1")),
@@ -492,9 +493,7 @@ func TestParser_no_init(t *testing.T) {
 									Name:   "amazon-v2",
 									Source: "github.com/hashicorp/amazon",
 									Type: &addrs.Plugin{
-										Type:      "amazon",
-										Namespace: "hashicorp",
-										Hostname:  "github.com",
+										Source: "github.com/hashicorp/amazon",
 									},
 									Requirement: VersionConstraint{
 										Required: mustVersionConstraints(version.NewConstraint(">= v2")),
@@ -504,9 +503,7 @@ func TestParser_no_init(t *testing.T) {
 									Name:   "amazon-v3",
 									Source: "github.com/hashicorp/amazon",
 									Type: &addrs.Plugin{
-										Type:      "amazon",
-										Namespace: "hashicorp",
-										Hostname:  "github.com",
+										Source: "github.com/hashicorp/amazon",
 									},
 									Requirement: VersionConstraint{
 										Required: mustVersionConstraints(version.NewConstraint(">= v3")),
@@ -516,9 +513,7 @@ func TestParser_no_init(t *testing.T) {
 									Name:   "amazon-v3-azr",
 									Source: "github.com/azr/amazon",
 									Type: &addrs.Plugin{
-										Type:      "amazon",
-										Namespace: "azr",
-										Hostname:  "github.com",
+										Source: "github.com/azr/amazon",
 									},
 									Requirement: VersionConstraint{
 										Required: mustVersionConstraints(version.NewConstraint(">= v3")),
@@ -528,9 +523,7 @@ func TestParser_no_init(t *testing.T) {
 									Name:   "amazon-v4",
 									Source: "github.com/hashicorp/amazon",
 									Type: &addrs.Plugin{
-										Type:      "amazon",
-										Namespace: "hashicorp",
-										Hostname:  "github.com",
+										Source: "github.com/hashicorp/amazon",
 									},
 									Requirement: VersionConstraint{
 										Required: mustVersionConstraints(version.NewConstraint(">= v4")),

@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
 package hcl2template
 
 import (
@@ -202,17 +205,6 @@ var (
 		Datasource: "string",
 	}
 
-	basicMockBuilder = &MockBuilder{
-		Config: MockConfig{
-			NestedMockConfig: builderBasicNestedMockConfig,
-			Nested:           builderBasicNestedMockConfig,
-			NestedSlice: []NestedMockConfig{
-				builderBasicNestedMockConfig,
-				builderBasicNestedMockConfig,
-			},
-		},
-	}
-
 	basicMockProvisioner = &MockProvisioner{
 		Config: MockConfig{
 			NotSquashed:      "value <UNKNOWN>",
@@ -270,17 +262,6 @@ var (
 			NestedSlice: []NestedMockConfig{},
 		},
 	}
-	basicMockCommunicator = &MockCommunicator{
-		Config: MockConfig{
-			NestedMockConfig: basicNestedMockConfig,
-			Nested:           basicNestedMockConfig,
-			NestedSlice: []NestedMockConfig{
-				{
-					Tags: []MockTag{},
-				},
-			},
-		},
-	}
 
 	emptyMockBuilder = &MockBuilder{
 		Config: MockConfig{
@@ -289,13 +270,6 @@ var (
 			},
 			Nested:      NestedMockConfig{},
 			NestedSlice: []NestedMockConfig{},
-		},
-	}
-
-	emptyMockProvisioner = &MockProvisioner{
-		Config: MockConfig{
-			NestedMockConfig: NestedMockConfig{Tags: []MockTag{}},
-			NestedSlice:      []NestedMockConfig{},
 		},
 	}
 
@@ -363,6 +337,15 @@ var cmpOpts = []cmp.Option{
 	),
 	cmpopts.IgnoreFields(VariableAssignment{},
 		"Expr", // its an interface
+	),
+	cmpopts.IgnoreFields(packer.CoreBuild{},
+		"HCLConfig",
+	),
+	cmpopts.IgnoreFields(packer.CoreBuildProvisioner{},
+		"HCLConfig",
+	),
+	cmpopts.IgnoreFields(packer.CoreBuildPostProcessor{},
+		"HCLConfig",
 	),
 	cmpopts.IgnoreTypes(hcl2template.MockBuilder{}),
 	cmpopts.IgnoreTypes(HCL2Ref{}),

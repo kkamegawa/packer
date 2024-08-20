@@ -1,10 +1,12 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
 package packer
 
 import (
 	"context"
 	"fmt"
 	"log"
-	"sync"
 	"time"
 
 	"github.com/hashicorp/hcl/v2/hcldec"
@@ -202,10 +204,6 @@ func (r *RetriedProvisioner) Provision(ctx context.Context, ui packersdk.Ui, com
 // press before the provisioner is actually run.
 type DebuggedProvisioner struct {
 	Provisioner packersdk.Provisioner
-
-	cancelCh chan struct{}
-	doneCh   chan struct{}
-	lock     sync.Mutex
 }
 
 func (p *DebuggedProvisioner) ConfigSpec() hcldec.ObjectSpec { return p.ConfigSpec() }

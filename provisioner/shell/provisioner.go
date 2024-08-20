@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
 //go:generate packer-sdc mapstructure-to-hcl2 -type Config
 
 // This package implements a provisioner for Packer that executes
@@ -200,7 +203,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packe
 
 		// Write our contents to it
 		writer := bufio.NewWriter(tf)
-		writer.WriteString(fmt.Sprintf("#!%s\n", p.config.InlineShebang))
+		_, _ = writer.WriteString(fmt.Sprintf("#!%s\n", p.config.InlineShebang))
 		for _, command := range p.config.Inline {
 			p.config.ctx.Data = generatedData
 			command, err := interpolate.Render(command, &p.config.ctx)
@@ -369,10 +372,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packe
 
 	if p.config.PauseAfter != 0 {
 		ui.Say(fmt.Sprintf("Pausing %s after this provisioner...", p.config.PauseAfter))
-		select {
-		case <-time.After(p.config.PauseAfter):
-			return nil
-		}
+		time.Sleep(p.config.PauseAfter)
 	}
 
 	return nil

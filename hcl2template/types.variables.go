@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
 package hcl2template
 
 import (
@@ -27,6 +30,17 @@ type LocalBlock struct {
 	// When Sensitive is set to true Packer will try its best to hide/obfuscate
 	// the variable from the output stream. By replacing the text.
 	Sensitive bool
+
+	// dependsOn lists the dependencies for being able to evaluate this local
+	//
+	// Only `local`/`locals` will be referenced here as we execute all the
+	// same component types at once.
+	dependencies []*LocalBlock
+	// evaluated toggles to true if it has been evaluated.
+	//
+	// We use this to determine if we're ready to get the value of the
+	// expression.
+	evaluated bool
 }
 
 // VariableAssignment represents a way a variable was set: the expression
@@ -738,7 +752,6 @@ func (cfg *PackerConfig) collectInputVariableValues(env []string, files []*hcl.F
 					Severity: hcl.DiagError,
 					Summary:  "Invalid argument value for -var variable",
 					Detail:   fmt.Sprintf("The received arg value for %s is not compatible with the variable's type constraint: %s.", name, err),
-					Subject:  expr.Range().Ptr(),
 				})
 				val = cty.DynamicVal
 			}

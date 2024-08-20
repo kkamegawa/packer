@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
 package fix
 
 import (
@@ -10,7 +13,7 @@ type FixerGalaxyCommand struct{}
 
 func (FixerGalaxyCommand) DeprecatedOptions() map[string][]string {
 	return map[string][]string{
-		"ansible": []string{"galaxycommand"},
+		"ansible": {"galaxycommand"},
 	}
 }
 
@@ -37,12 +40,8 @@ func (FixerGalaxyCommand) Fix(input map[string]interface{}) (map[string]interfac
 		}
 
 		if _, ok := provisioners["galaxy_command"]; ok {
-
 			// drop galaxycommand if it is also included
-			if _, galaxyCommandIncluded := provisioners["galaxycommand"]; galaxyCommandIncluded {
-				delete(provisioners, "galaxycommand")
-			}
-
+			delete(provisioners, "galaxycommand")
 		} else {
 
 			// replace galaxycommand with galaxy_command if it exists

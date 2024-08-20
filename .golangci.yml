@@ -1,3 +1,6 @@
+# Copyright (c) HashiCorp, Inc.
+# SPDX-License-Identifier: BUSL-1.1
+
 issues:
   # List of regexps of issue texts to exclude, empty list by default.
   # But independently from this option we use default exclude patterns,
@@ -17,6 +20,9 @@ issues:
     - linters:
         - lll
       source: "^//go:generate "
+    - linters:
+        - errcheck
+      path: ".*_test.go"
 
   # Maximum issues count per one linter. Set to 0 to disable. Default is 50.
   max-issues-per-linter: 0
@@ -27,7 +33,6 @@ issues:
 linters:
   disable-all: true
   enable:
-    - deadcode
     - errcheck
     - goimports
     - gosimple
@@ -36,7 +41,6 @@ linters:
     - staticcheck
     - unconvert
     - unused
-    - varcheck
   fast: true
 
 # options for analysis running

@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
 package registry
 
 import (
@@ -9,7 +12,7 @@ import (
 // nullRegistry is a special handler that does nothing
 type nullRegistry struct{}
 
-func (r nullRegistry) PopulateIteration(context.Context) error {
+func (r nullRegistry) PopulateVersion(context.Context) error {
 	return nil
 }
 
@@ -24,4 +27,10 @@ func (r nullRegistry) CompleteBuild(
 	buildErr error,
 ) ([]sdkpacker.Artifact, error) {
 	return artifacts, nil
+}
+
+func (r nullRegistry) VersionStatusSummary() {}
+
+func (r nullRegistry) Metadata() Metadata {
+	return NilMetadata{}
 }

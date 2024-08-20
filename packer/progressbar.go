@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
 //go:build !solaris
 // +build !solaris
 
@@ -59,7 +62,7 @@ func (p *UiProgressBar) TrackProgress(src string, currentSize, totalSize int64, 
 			newPb.Finish()
 			p.pbs--
 			if p.pbs <= 0 {
-				p.pool.Stop()
+				_ = p.pool.Stop()
 				p.pool = nil
 			}
 			return nil

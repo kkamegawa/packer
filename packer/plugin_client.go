@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
 package packer
 
 import (
@@ -5,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -111,7 +113,7 @@ func NewClient(config *PluginClientConfig) (c *PluginClient) {
 	}
 
 	if config.Stderr == nil {
-		config.Stderr = ioutil.Discard
+		config.Stderr = io.Discard
 	}
 
 	c = &PluginClient{config: config}
@@ -196,7 +198,7 @@ func (c *PluginClient) Kill() {
 		return
 	}
 
-	cmd.Process.Kill()
+	_ = cmd.Process.Kill()
 
 	// Wait for the client to finish logging so we have a complete log
 	<-c.doneLogging
@@ -245,7 +247,7 @@ func (c *PluginClient) Start() (net.Addr, error) {
 		r := recover()
 
 		if err != nil || r != nil {
-			cmd.Process.Kill()
+			_ = cmd.Process.Kill()
 		}
 
 		if r != nil {
@@ -262,7 +264,7 @@ func (c *PluginClient) Start() (net.Addr, error) {
 		defer stdout_w.Close()
 
 		// Wait for the command to end.
-		cmd.Wait()
+		_ = cmd.Wait()
 
 		// Log and make sure to flush the logs write away
 		log.Printf("%s: plugin process exited\n", cmd.Path)
@@ -375,7 +377,7 @@ func (c *PluginClient) logStderr(r io.Reader) {
 	for {
 		line, err := bufR.ReadString('\n')
 		if line != "" {
-			c.config.Stderr.Write([]byte(line))
+			_, _ = c.config.Stderr.Write([]byte(line))
 
 			line = strings.TrimRightFunc(line, unicode.IsSpace)
 
@@ -404,7 +406,10 @@ func (c *PluginClient) Client() (*packerrpc.Client, error) {
 
 	if tcpConn, ok := conn.(*net.TCPConn); ok {
 		// Make sure to set keep alive so that the connection doesn't die
-		tcpConn.SetKeepAlive(true)
+		err = tcpConn.SetKeepAlive(true)
+		if err != nil {
+			log.Printf("[ERROR] failed to set keepalive for TCP connection to plugin: %s. Some instability may occur.", err)
+		}
 	}
 
 	client, err := packerrpc.NewClient(conn)

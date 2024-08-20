@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
 //go:generate packer-sdc mapstructure-to-hcl2 -type Config
 
 package restart
@@ -162,7 +165,10 @@ var waitForRestart = func(ctx context.Context, p *Provisioner, comm packersdk.Co
 		if cmd.ExitStatus() == 0 {
 			// Cancel reboot we created to test if machine was already rebooting
 			cmd = &packersdk.RemoteCmd{Command: abortcommand}
-			cmd.RunWithUi(ctx, comm, ui)
+			err = cmd.RunWithUi(ctx, comm, ui)
+			if err != nil {
+				log.Printf("[ERROR] failed to run remote shutdown command: %s, build will likely hang.", err)
+			}
 			break
 		}
 	}
@@ -246,7 +252,11 @@ var waitForCommunicator = func(ctx context.Context, p *Provisioner) error {
 		cmdModuleLoad.Stdout = &buf
 		cmdModuleLoad.Stdout = io.MultiWriter(cmdModuleLoad.Stdout, &buf2)
 
-		cmdModuleLoad.RunWithUi(ctx, p.comm, p.ui)
+		err := cmdModuleLoad.RunWithUi(ctx, p.comm, p.ui)
+		if err != nil {
+			log.Printf("[ERROR] failed to run restart command on guest: %s. Build may hang.", err)
+		}
+
 		stdoutToRead := buf2.String()
 
 		if !strings.Contains(stdoutToRead, "restarted.") {
