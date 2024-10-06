@@ -3,23 +3,18 @@ package plugin_tests
 import (
 	"testing"
 
-	"github.com/hashicorp/packer/packer_test/lib"
+	"github.com/hashicorp/packer/packer_test/common"
 	"github.com/stretchr/testify/suite"
 )
 
 type PackerPluginTestSuite struct {
-	*lib.PackerTestSuite
+	*common.PackerTestSuite
 }
 
 func Test_PackerPluginSuite(t *testing.T) {
-	baseSuite, cleanup := lib.PackerCoreSuite(t)
+	baseSuite, cleanup := common.InitBaseSuite(t)
 	defer cleanup()
-
-	ts := &PackerPluginTestSuite{
-		baseSuite,
-	}
-	ts.PackerTestSuite.CompileTestPluginVersions(t,
-		"1.0.0",
+	baseSuite.CompileTestPluginVersions(t,
 		"1.0.0",
 		"1.0.0+metadata",
 		"1.0.1-alpha1",
@@ -31,6 +26,10 @@ func Test_PackerPluginSuite(t *testing.T) {
 		"1.0.1-dev",
 		"2.0.0",
 	)
+
+	ts := &PackerPluginTestSuite{
+		baseSuite,
+	}
 
 	suite.Run(t, ts)
 }

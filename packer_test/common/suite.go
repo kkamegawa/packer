@@ -1,4 +1,4 @@
-package lib
+package common
 
 import (
 	"fmt"
@@ -27,14 +27,14 @@ type PackerTestSuite struct {
 	// we may have multiple suites that exist, each with its own repo of
 	// plugins compiled for the purposes of the test, so as they all run
 	// within the same process space, they should be separate instances.
-	compiledPlugins compiledPlugins
+	compiledPlugins sync.Map
 }
 
 func (ts *PackerTestSuite) buildPluginVersion(waitgroup *sync.WaitGroup, versionString string, t *testing.T) {
 	waitgroup.Add(1)
 	go func() {
 		defer waitgroup.Done()
-		ts.BuildSimplePlugin(versionString, t)
+		ts.CompilePlugin(t, versionString)
 	}()
 }
 
@@ -62,17 +62,16 @@ func (ts *PackerTestSuite) SkipNoAcc() {
 	}
 }
 
-func PackerCoreSuite(t *testing.T) (*PackerTestSuite, func()) {
-	ts := &PackerTestSuite{}
+func InitBaseSuite(t *testing.T) (*PackerTestSuite, func()) {
+	ts := &PackerTestSuite{
+		compiledPlugins: sync.Map{},
+	}
 
 	tempDir, err := os.MkdirTemp("", "packer-core-acc-test-")
 	if err != nil {
 		panic(fmt.Sprintf("failed to create temporary directory for compiled plugins: %s", err))
 	}
 	ts.pluginsDirectory = tempDir
-
-	defer func() {
-	}()
 
 	packerPath := os.Getenv("PACKER_CUSTOM_PATH")
 	if packerPath == "" {

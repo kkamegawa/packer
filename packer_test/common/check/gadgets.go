@@ -1,4 +1,4 @@
-package lib
+package check
 
 import (
 	"fmt"
@@ -123,6 +123,10 @@ func Grep(expression string, opts ...GrepOpts) Checker {
 		}
 	}
 	return pc
+}
+
+func GrepInverted(expression string, opts ...GrepOpts) Checker {
+	return Grep(expression, append(opts, GrepInvert)...)
 }
 
 type PluginVersionTuple struct {

@@ -1,4 +1,4 @@
-package lib
+package common
 
 import (
 	"fmt"
@@ -7,38 +7,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/packer-plugin-sdk/plugin"
+	"github.com/hashicorp/packer/packer_test/common/check"
 )
-
-type compiledPlugins struct {
-	pluginVersions map[string]string
-	mutex          sync.Mutex
-}
-
-func (ts *PackerTestSuite) StorePluginVersion(pluginVersion, path string) {
-	ts.compiledPlugins.mutex.Lock()
-	defer ts.compiledPlugins.mutex.Unlock()
-	if ts.compiledPlugins.pluginVersions == nil {
-		ts.compiledPlugins.pluginVersions = map[string]string{}
-	}
-
-	ts.compiledPlugins.pluginVersions[pluginVersion] = path
-}
-
-func (ts *PackerTestSuite) LoadPluginVersion(pluginVersion string) (string, bool) {
-	ts.compiledPlugins.mutex.Lock()
-	defer ts.compiledPlugins.mutex.Unlock()
-	if ts.compiledPlugins.pluginVersions == nil {
-		ts.compiledPlugins.pluginVersions = map[string]string{}
-	}
-
-	path, ok := ts.compiledPlugins.pluginVersions[pluginVersion]
-	return path, ok
-}
 
 // LDFlags compiles the ldflags for the plugin to compile based on the information provided.
 func LDFlags(version *version.Version) string {
@@ -88,9 +62,24 @@ func ExpectedInstalledName(versionStr string) string {
 		runtime.GOOS, runtime.GOARCH, ext)
 }
 
-// BuildSimplePlugin creates a plugin that essentially does nothing.
+// GetPluginPath gets the path for a pre-compiled plugin in the current test suite.
 //
-// The plugin's code is contained in a subdirectory of this, and lets us
+// The version only is needed, as the path to a compiled version of the tester
+// plugin will be returned, so it can be installed after the fact.
+//
+// If the version requested does not exist, the function will panic.
+func (ts *PackerTestSuite) GetPluginPath(t *testing.T, version string) string {
+	path, ok := ts.compiledPlugins.Load(version)
+	if !ok {
+		t.Fatalf("tester plugin in version %q was not built, either build it during suite init, or with BuildTestPlugin", version)
+	}
+
+	return path.(string)
+}
+
+// CompilePlugin builds a tester plugin with the specified version.
+//
+// The plugin's code is contained in a subdirectory of this file, and lets us
 // change the attributes of the plugin binary itself, like the SDK version,
 // the plugin's version, etc.
 //
@@ -100,16 +89,24 @@ func ExpectedInstalledName(versionStr string) string {
 //
 // The path to the plugin is returned, it won't be removed automatically
 // though, deletion is the caller's responsibility.
-func (ts *PackerTestSuite) BuildSimplePlugin(versionString string, t *testing.T) string {
-	// Only build plugin binary if not already done beforehand
-	path, ok := ts.LoadPluginVersion(versionString)
-	if ok {
-		return path
+//
+// Note: each tester plugin may only be compiled once for a specific version in
+// a test suite. The version may include core (mandatory), pre-release and
+// metadata. Unlike Packer core, metadata does matter for the version being built.
+func (ts *PackerTestSuite) CompilePlugin(t *testing.T, versionString string) {
+	// Fail to build plugin if already built.
+	//
+	// Especially with customisations being a thing, relying on cache to get and
+	// build a plugin at once means that the function is not idempotent anymore,
+	// and therefore we cannot rely on it being called twice and producing the
+	// same result, so we forbid it.
+	if _, ok := ts.compiledPlugins.Load(versionString); ok {
+		t.Fatalf("plugin version %q was already built, use GetTestPlugin instead", versionString)
 	}
 
 	v := version.Must(version.NewSemver(versionString))
 
-	t.Logf("Building plugin in version %v", v)
+	t.Logf("Building tester plugin in version %v", v)
 
 	testDir, err := currentDir()
 	if err != nil {
@@ -125,9 +122,12 @@ func (ts *PackerTestSuite) BuildSimplePlugin(versionString string, t *testing.T)
 		t.Fatalf("failed to compile plugin binary: %s\ncompiler logs: %s", err, logs)
 	}
 
-	ts.StorePluginVersion(v.String(), outBin)
+	ts.compiledPlugins.Store(v.String(), outBin)
+}
 
-	return outBin
+type PluginDirSpec struct {
+	dirPath string
+	suite   *PackerTestSuite
 }
 
 // MakePluginDir installs a list of plugins into a temporary directory and returns its path
@@ -136,48 +136,71 @@ func (ts *PackerTestSuite) BuildSimplePlugin(versionString string, t *testing.T)
 // packer will be able to use that directory for running its functions.
 //
 // Deletion of the directory is the caller's responsibility.
-func (ts *PackerTestSuite) MakePluginDir(pluginVersions ...string) (pluginTempDir string, cleanup func()) {
-	t := ts.T()
+//
+// Note: all of the plugin versions specified to be installed in this plugin directory
+// must have been compiled beforehand.
+func (ts *PackerTestSuite) MakePluginDir() *PluginDirSpec {
+	var err error
 
-	for _, ver := range pluginVersions {
-		ts.BuildSimplePlugin(ver, t)
+	pluginTempDir, err := os.MkdirTemp("", "packer-plugin-dir-temp-")
+	if err != nil {
+		return nil
 	}
+
+	return &PluginDirSpec{
+		dirPath: pluginTempDir,
+		suite:   ts,
+	}
+}
+
+// InstallPluginVersions installs several versions of the tester plugin under
+// github.com/hashicorp/tester.
+//
+// Each version of the plugin needs to have been pre-compiled.
+//
+// If a plugin is missing, the temporary directory will be removed.
+func (ps *PluginDirSpec) InstallPluginVersions(pluginVersions ...string) *PluginDirSpec {
+	t := ps.suite.T()
 
 	var err error
 
 	defer func() {
-		if err != nil {
-			if pluginTempDir != "" {
-				os.RemoveAll(pluginTempDir)
+		if err != nil || t.Failed() {
+			rmErr := os.RemoveAll(ps.Dir())
+			if rmErr != nil {
+				t.Logf("failed to remove temporary plugin directory %q: %s. This may need manual intervention.", ps.Dir(), err)
 			}
-			t.Fatalf("failed to prepare temporary plugin directory %q: %s", pluginTempDir, err)
+			t.Fatalf("failed to install plugins to temporary plugin directory %q: %s", ps.Dir(), err)
 		}
 	}()
 
-	pluginTempDir, err = os.MkdirTemp("", "packer-plugin-dir-temp-")
-	if err != nil {
+	for _, pluginVersion := range pluginVersions {
+		path := ps.suite.GetPluginPath(t, pluginVersion)
+		cmd := ps.suite.PackerCommand().SetArgs("plugins", "install", "--path", path, "github.com/hashicorp/tester").AddEnv("PACKER_PLUGIN_PATH", ps.Dir())
+		cmd.Assert(check.MustSucceed())
+		out, stderr, cmdErr := cmd.run()
+		if cmdErr != nil {
+			err = fmt.Errorf("failed to install tester plugin version %q: %s\nCommand stdout: %s\nCommand stderr: %s", pluginVersion, err, out, stderr)
+		}
+	}
+
+	return ps
+}
+
+// Dir returns the temporary plugin dir for use in other functions
+func (ps PluginDirSpec) Dir() string {
+	return ps.dirPath
+}
+
+func (ps *PluginDirSpec) Cleanup() {
+	pluginDir := ps.Dir()
+	if pluginDir == "" {
 		return
 	}
 
-	for _, pluginVersion := range pluginVersions {
-		path, ok := ts.LoadPluginVersion(pluginVersion)
-		if !ok {
-			err = fmt.Errorf("failed to get path to version %q, was it compiled?", pluginVersion)
-		}
-		cmd := ts.PackerCommand().SetArgs("plugins", "install", "--path", path, "github.com/hashicorp/tester").AddEnv("PACKER_PLUGIN_PATH", pluginTempDir)
-		cmd.Assert(MustSucceed())
-		out, stderr, cmdErr := cmd.Run()
-		if cmdErr != nil {
-			err = fmt.Errorf("failed to install tester plugin version %q: %s\nCommand stdout: %s\nCommand stderr: %s", pluginVersion, err, out, stderr)
-			return
-		}
-	}
-
-	return pluginTempDir, func() {
-		err := os.RemoveAll(pluginTempDir)
-		if err != nil {
-			t.Logf("failed to remove temporary plugin directory %q: %s. This may need manual intervention.", pluginTempDir, err)
-		}
+	err := os.RemoveAll(pluginDir)
+	if err != nil {
+		ps.suite.T().Logf("failed to remove temporary plugin directory %q: %s. This may need manual intervention.", pluginDir, err)
 	}
 }
 
